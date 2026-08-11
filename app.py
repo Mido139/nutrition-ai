@@ -38,31 +38,6 @@ except Exception:
     st.error("⚠️ لم يتم العثور على مفاتيح API. يرجى التأكد من إضافتها في إعدادات الاستضافة أو ملف الأسرار.")
     st.stop()
 
-# إعداد مفتاح جوجل بشكل عام لكي نتمكن من رفع الملفات
-genai.configure(api_key=gemini_api_key)
-
-# --- دالة رفع الكتاب للذاكرة (تعمل مرة واحدة فقط لتسريع الموقع) ---
-@st.cache_resource(show_spinner=False)
-def load_nasem_book():
-    book_path = "nasem.pdf"
-    if os.path.exists(book_path):
-        try:
-            # يتم رفع الكتاب لخوادم Gemini لمعالجته
-            uploaded_file = genai.upload_file(book_path, display_name="NASEM Dairy Cattle Book")
-            return uploaded_file
-        except Exception as e:
-            st.error(f"⚠️ حدث خطأ أثناء قراءة ملف PDF: {e}")
-            return None
-    return None
-
-with st.spinner("جاري تهيئة النظام وقراءة كتاب NASEM الأساسي..."):
-    nasem_file = load_nasem_book()
-
-if nasem_file:
-    st.success("✅ تم تحميل وقراءة كتاب NASEM الأساسي بنجاح، النظام جاهز للتحليل الدقيق!")
-else:
-    st.warning("⚠️ لم يتم العثور على ملف 'nasem.pdf' في مجلد المشروع. سيتم الاعتماد على البحث الحي في الإنترنت فقط.")
-
 # إعداد الذاكرة المؤقتة (Session State) لحفظ المحادثة
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -79,7 +54,7 @@ def process_query(query):
         st.markdown(query)
 
     with st.chat_message("assistant"):
-        with st.spinner("جاري تحليل الكتاب ومسح قواعد البيانات العلمية..."):
+        with st.spinner("جاري مسح قواعد البيانات العلمية الخاصة بالأبقار الحلوب..."):
             try:
                 # 1. تخصيص محرك البحث ليجلب الأبحاث الخاصة بالأبقار الحلوب فقط
                 scientific_query = query + " AND (dairy cattle OR dairy cows OR الأبقار الحلوب) (بحث علمي OR دراسة أكاديمية OR journal OR pubmed OR sciencedirect OR ncbi)"
@@ -92,21 +67,22 @@ def process_query(query):
                     context += f"مرجع رقم [{index + 1}]:\n- العنوان: {result['title']}\n- الرابط: {result['url']}\n- المعلومات: {result['content']}\n\n"
                 
                 # 2. إعداد Gemini بقوانين صارمة للحصر في الأبقار الحلوب فقط
+                genai.configure(api_key=gemini_api_key)
                 available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name]
                 
                 if available_models:
                     prompt = f"""
                     أنت باحث أكاديمي خبير ومستشار متخصص *حصرياً* في تغذية، فسيولوجيا هضم، وإدارة الأبقار الحلوب (Dairy Cattle) فقط.
                     مهمتك هي تقديم إجابات علمية وبيولوجية دقيقة وشاملة من خلال الدمج بين مصدرين أساسيين:
-                    أولاً: كتاب (Nutrient Requirements of Dairy Cattle - NASEM) المرفق كملف كامل مع هذا الطلب (إن وجد).
+                    أولاً: المرجع الأكاديمي الأساسي الدائم (Nutrient Requirements of Dairy Cattle - NASEM): https://www.ncbi.nlm.nih.gov/books/NBK600603/
                     ثانياً: "مجموعة الأبحاث والمصادر العلمية المتاحة من البحث الحي" المرفقة أدناه.
                     
                     التزم بالقوانين التالية بصرامة شديدة:
                     1. التخصص الحصري (أهم قانون): يُحظر عليك تماماً الإجابة على أي أسئلة تتعلق بحيوانات أخرى (مثل الأغنام، الماعز، عجول التسمين غير الحلوب، الدواجن، الخيول) أو أي مواضيع خارج نطاق الأبقار الحلوب. إذا كان السؤال لا يخص الأبقار الحلوب، اعتذر بلباقة وقل بوضوح: "عذراً، تخصصي يقتصر حصرياً على تغذية وإدارة الأبقار الحلوب، ولا يمكنني تقديم معلومات حول هذا الموضوع."
-                    2. الشمول والدقة: استخرج المعادلات، النسب المئوية، ومعدلات الأيض مباشرة من ملف كتاب NASEM المرفق إن وجدت، وادعمها بالأبحاث الحديثة المرفقة أدناه لتقديم إجابة متكاملة تخص الأبقار الحلوب.
-                    3. التوثيق الأكاديمي: يجب توثيق كل معلومة داخل النص. إذا استخدمت معلومات من ملف كتاب NASEM استخدم الرمز [NASEM, رقم الصفحة إن أمكن]، وإذا استخدمت معلومات من الأبحاث المرفقة استخدم رقم المرجع مثل [1] أو [2].
+                    2. الشمول والدقة: اجمع المعلومات من المرجع الثابت ومن الأبحاث الحية لتقديم إجابة متكاملة تخص الأبقار الحلوب. اذكر الأرقام، النسب المئوية، معدلات الأيض، والبيانات الدقيقة.
+                    3. التوثيق الأكاديمي: يجب توثيق كل معلومة داخل النص. إذا استخدمت معلومات من مرجع NASEM استخدم الرمز [NASEM]، وإذا استخدمت معلومات من الأبحاث المرفقة استخدم رقم المرجع مثل [1] أو [2].
                     4. منع التأليف نهائياً: إذا لم تجد إجابة علمية دقيقة في الرابط الثابت أو في الأبحاث المرفقة، قل بوضوح: "لا توفر المراجع الحالية بيانات علمية دقيقة للإجابة على هذا السؤال".
-                    5. قسم المراجع: في نهاية الإجابة، قم بعمل قسم "المراجع العلمية" واذكر فيها روابط الأبحاث التي اعتمدت عليها فعلياً، بالإضافة إلى الإشارة لكتاب NASEM إذا تم استخدامه.
+                    5. قسم المراجع: في نهاية الإجابة، قم بعمل قسم "المراجع العلمية" واذكر فيها روابط الأبحاث التي اعتمدت عليها فعلياً، بالإضافة إلى رابط NASEM الثابت إذا تم استخدامه.
                     
                     سؤال المستخدم: {query}
                     
@@ -115,19 +91,13 @@ def process_query(query):
                     """
                     
                     answer = None
-                    # استخدام نماذج 1.5 لأنها قادرة على قراءة المستندات والملفات المرفقة
-                    preferred_models = ["models/gemini-1.5-pro-latest", "models/gemini-1.5-flash-latest", "models/gemini-1.5-pro", "models/gemini-1.5-flash"]
-                    models_to_try = [m for m in preferred_models if m in available_models] + [m for m in available_models if m not in preferred_models]
-
-                    # تجهيز المحتوى للإرسال: النص + ملف الكتاب (إن وجد)
-                    contents_to_send = [prompt]
-                    if nasem_file:
-                        contents_to_send.append(nasem_file)
+                    preferred_models = ["models/gemini-1.5-pro-latest", "models/gemini-pro"]
+                    models_to_try = preferred_models + [m for m in available_models if m not in preferred_models]
 
                     for model_name in models_to_try:
                         try:
                             model = genai.GenerativeModel(model_name)
-                            answer = model.generate_content(contents_to_send)
+                            answer = model.generate_content(prompt)
                             break
                         except Exception:
                             continue
@@ -136,7 +106,7 @@ def process_query(query):
                         st.markdown(answer.text)
                         st.session_state.messages.append({"role": "assistant", "content": answer.text})
                     else:
-                        st.error("عذراً، لم نتمكن من معالجة الإجابة حالياً عبر النماذج المتاحة. (تأكد من أن حجم الكتاب يتناسب مع حصة API الخاصة بك).")
+                        st.error("عذراً، لم نتمكن من معالجة الإجابة حالياً عبر النماذج المتاحة.")
                 else:
                     st.error("لا توجد نماذج ذكاء اصطناعي متاحة في مفتاحك.")
                     
