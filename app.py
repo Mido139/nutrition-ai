@@ -24,6 +24,11 @@ st.markdown("""
         color: #4CAF50;
         background-color: #f9f9f9;
     }
+    /* تنسيق لتقليل المسافة بين زر رفع الصورة وشريط الكتابة */
+    .stFileUploader {
+        padding-bottom: 0rem;
+        margin-bottom: -1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -42,19 +47,6 @@ except Exception:
 # إعداد الذاكرة المؤقتة (Session State) لحفظ المحادثة
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# --- الشريط الجانبي لرفع الصور ---
-with st.sidebar:
-    st.header("📷 تحليل الصور")
-    st.write("ارفع صورة (لبقرة، روث، أو علف) وسيقوم المساعد بتحليلها علمياً.")
-    uploaded_file = st.file_uploader("إرفاق صورة", type=["jpg", "jpeg", "png"])
-    if uploaded_file:
-        st.success("✅ تم رفع الصورة! اكتب سؤالك في الأسفل واضغط Enter للبدء.")
-        st.warning("💡 ملاحظة: اضغط على علامة (X) لإزالة الصورة بعد تحليلها حتى لا يتم إرسالها مع أسئلتك القادمة.")
-        # قراءة الصورة لتكون جاهزة للإرسال
-        img_to_analyze = Image.open(uploaded_file)
-    else:
-        img_to_analyze = None
 
 # عرض الرسائل السابقة في المحادثة
 for message in st.session_state.messages:
@@ -161,8 +153,16 @@ if len(st.session_state.messages) == 0:
         if st.button("💩 حلل صورة الروث لتحديد درجة الروث"):
             process_query("كيف يمكن تقييم وتحليل درجات روث الأبقار لضبط التغذية؟")
 
-# شريط الإدخال السفلي
+# --- منطقة الإدخال السفلية (الصورة + النص) ---
+st.write("---") # فاصل مرئي بسيط
+uploaded_file = st.file_uploader("📷 إرفاق صورة للتحليل (اختياري)", type=["jpg", "jpeg", "png"])
+
+if uploaded_file:
+    img_to_analyze = Image.open(uploaded_file)
+    st.success("✅ تم إرفاق الصورة. اكتب سؤالك في الشريط بالأسفل واضغط Enter.")
+else:
+    img_to_analyze = None
+
 user_input = st.chat_input("اسأل عن الحميات، المكونات، أو ارفع صورة واسأل عنها...")
 if user_input:
-    # نقوم بإرسال النص مع الصورة (إن وجدت في الشريط الجانبي)
     process_query(user_input, img=img_to_analyze)
