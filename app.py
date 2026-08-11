@@ -28,7 +28,7 @@ st.markdown("""
 
 # عنوان التطبيق
 st.title("🐄 مساعد التغذية الذكي")
-st.write("مرحباً بك! أنا مساعدك الذكي المتخصص في تغذية الحيوان وإدارة المزارع.")
+st.write("مرحباً بك! أنا مساعدك الذكي المتخصص في الأبحاث الأكاديمية لتغذية الحيوان وإدارة المزارع.")
 
 # --- جزء سحب المفاتيح (متوافق مع الاستضافة السحابية والاستخدام المحلي) ---
 try:
@@ -54,35 +54,46 @@ def process_query(query):
         st.markdown(query)
 
     with st.chat_message("assistant"):
-        with st.spinner("جاري البحث في المصادر العلمية..."):
+        with st.spinner("جاري استخراج وتحليل الأبحاث العلمية..."):
             try:
-                # 1. البحث في Tavily
+                # 1. إجبار محرك البحث على جلب أبحاث ومصادر علمية فقط
+                scientific_query = query + " (دراسة علمية OR بحث أكاديمي OR scientific study OR journal OR pubmed)"
                 tavily_client = TavilyClient(api_key=tavily_api_key)
-                search_response = tavily_client.search(query, search_depth="advanced", max_results=3)
+                
+                # زيادة عدد النتائج لضمان إيجاد مادة علمية دسمة
+                search_response = tavily_client.search(scientific_query, search_depth="advanced", max_results=5)
                 
                 context = ""
-                for result in search_response.get("results", []):
-                    context += f"- العنوان: {result['title']}\n- الرابط: {result['url']}\n- المعلومات: {result['content']}\n\n"
+                for index, result in enumerate(search_response.get("results", [])):
+                    context += f"مرجع رقم [{index + 1}]:\n- العنوان: {result['title']}\n- الرابط: {result['url']}\n- المعلومات: {result['content']}\n\n"
                 
-                # 2. إعداد Gemini
+                # 2. إعداد Gemini بقوانين أكاديمية صارمة
                 genai.configure(api_key=gemini_api_key)
                 available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name]
                 
                 if available_models:
                     prompt = f"""
-                    أنت خبير واستشاري متخصص في تغذية الحيوان، وتحديداً الأبقار الحلوب وإدارة المزارع.
-                    أجب على سؤال المستخدم بناءً على "نتائج البحث" المرفقة فقط.
-                    قدم إجابة علمية، دقيقة، ومنظمة.
-                    يجب إدراج المراجع المستخدمة كروابط في النهاية.
+                    أنت باحث أكاديمي خبير ومستشار في تغذية الحيوان، وتحديداً في فسيولوجيا الهضم وإدارة الأبقار الحلوب والمجترات.
+                    مهمتك هي تقديم إجابات علمية وبيولوجية دقيقة بناءً على "المراجع المتاحة" أدناه فقط.
                     
-                    السؤال: {query}
+                    التزم بالقوانين التالية بصرامة شديدة:
+                    1. الدقة العلمية: تجنب النصائح السطحية والعامة تماماً. اذكر الأرقام، النسب المئوية، التفاعلات الكيميائية، أو البيانات الدقيقة المستخرجة من المراجع.
+                    2. التوثيق الأكاديمي: يجب أن توثق كل معلومة تذكرها برقم المرجع داخل النص المعكوف، مثال: (تؤدي زيادة نسبة الألياف إلى كذا... [1]).
+                    3. منع التأليف نهائياً: إذا كانت المراجع المتاحة أدناه لا تحتوي على إجابات علمية دقيقة لسؤال المستخدم، لا تخمن الإجابة. قل بوضوح: "لا توفر المراجع الحالية بيانات علمية كافية للإجابة الدقيقة على هذا السؤال".
+                    4. المراجع: في نهاية الإجابة، قم بعمل قسم باسم "المراجع العلمية:" واذكر فيها أرقام وروابط المراجع التي استخدمتها فقط في صياغة إجابتك.
                     
-                    المصادر المتاحة:
+                    سؤال المستخدم: {query}
+                    
+                    المراجع المتاحة:
                     {context}
                     """
                     
                     answer = None
-                    for model_name in available_models:
+                    # استخدام النماذج القوية المتخصصة في النصوص المعقدة كأولوية
+                    preferred_models = ["models/gemini-1.5-pro-latest", "models/gemini-pro"]
+                    models_to_try = preferred_models + [m for m in available_models if m not in preferred_models]
+
+                    for model_name in models_to_try:
                         try:
                             model = genai.GenerativeModel(model_name)
                             answer = model.generate_content(prompt)
@@ -94,9 +105,9 @@ def process_query(query):
                         st.markdown(answer.text)
                         st.session_state.messages.append({"role": "assistant", "content": answer.text})
                     else:
-                        st.error("جميع نماذج الذكاء الاصطناعي مغلقة حالياً.")
+                        st.error("عذراً، لم نتمكن من معالجة الإجابة حالياً عبر النماذج المتاحة.")
                 else:
-                    st.error("لا توجد نماذج متاحة.")
+                    st.error("لا توجد نماذج ذكاء اصطناعي متاحة في مفتاحك.")
                     
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
