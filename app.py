@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from tavily import TavilyClient
 import os
+from PIL import Image  # مكتبة معالجة الصور
 
 # إعداد واجهة الموقع
 st.set_page_config(page_title="مساعد تغذية الأبقار الحلوب", page_icon="🐄", layout="centered")
@@ -30,7 +31,7 @@ st.markdown("""
 st.title("🐄 مساعد تغذية الأبقار الحلوب")
 st.write("مرحباً بك! أنا مساعدك الذكي المتخصص حصرياً في الأبحاث الأكاديمية لتغذية وإدارة الأبقار الحلوب.")
 
-# --- جزء سحب المفاتيح (متوافق مع الاستضافة السحابية والاستخدام المحلي) ---
+# --- جزء سحب المفاتيح ---
 try:
     gemini_api_key = os.environ.get("GEMINI_API_KEY") or st.secrets["GEMINI_API_KEY"]
     tavily_api_key = os.environ.get("TAVILY_API_KEY") or st.secrets["TAVILY_API_KEY"]
@@ -42,24 +43,43 @@ except Exception:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# --- الشريط الجانبي لرفع الصور ---
+with st.sidebar:
+    st.header("📷 تحليل الصور")
+    st.write("ارفع صورة (لبقرة، روث، أو علف) وسيقوم المساعد بتحليلها علمياً.")
+    uploaded_file = st.file_uploader("إرفاق صورة", type=["jpg", "jpeg", "png"])
+    if uploaded_file:
+        st.success("✅ تم رفع الصورة! اكتب سؤالك في الأسفل واضغط Enter للبدء.")
+        st.warning("💡 ملاحظة: اضغط على علامة (X) لإزالة الصورة بعد تحليلها حتى لا يتم إرسالها مع أسئلتك القادمة.")
+        # قراءة الصورة لتكون جاهزة للإرسال
+        img_to_analyze = Image.open(uploaded_file)
+    else:
+        img_to_analyze = None
+
 # عرض الرسائل السابقة في المحادثة
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        # عرض الصورة في المحادثة إذا كانت موجودة
+        if "image" in message and message["image"] is not None:
+            st.image(message["image"], use_column_width=True)
 
 # دالة المعالجة الأساسية
-def process_query(query):
-    st.session_state.messages.append({"role": "user", "content": query})
+def process_query(query, img=None):
+    # حفظ الرسالة والصورة في الذاكرة
+    st.session_state.messages.append({"role": "user", "content": query, "image": img})
+    
     with st.chat_message("user"):
         st.markdown(query)
+        if img:
+            st.image(img, caption="الصورة المرفقة", use_column_width=True)
 
     with st.chat_message("assistant"):
-        with st.spinner("جاري مسح قواعد البيانات العلمية الخاصة بالأبقار الحلوب..."):
+        with st.spinner("جاري مسح قواعد البيانات العلمية وتحليل المعطيات..."):
             try:
-                # 1. تخصيص محرك البحث ليجلب الأبحاث الخاصة بالأبقار الحلوب فقط
+                # 1. تخصيص محرك البحث
                 scientific_query = query + " AND (dairy cattle OR dairy cows OR الأبقار الحلوب) (بحث علمي OR دراسة أكاديمية OR journal OR pubmed OR sciencedirect OR ncbi)"
                 tavily_client = TavilyClient(api_key=tavily_api_key)
-                
                 search_response = tavily_client.search(scientific_query, search_depth="advanced", max_results=8)
                 
                 context = ""
@@ -79,10 +99,11 @@ def process_query(query):
                     
                     التزم بالقوانين التالية بصرامة شديدة:
                     1. التخصص الحصري (أهم قانون): يُحظر عليك تماماً الإجابة على أي أسئلة تتعلق بحيوانات أخرى (مثل الأغنام، الماعز، عجول التسمين غير الحلوب، الدواجن، الخيول) أو أي مواضيع خارج نطاق الأبقار الحلوب. إذا كان السؤال لا يخص الأبقار الحلوب، اعتذر بلباقة وقل بوضوح: "عذراً، تخصصي يقتصر حصرياً على تغذية وإدارة الأبقار الحلوب، ولا يمكنني تقديم معلومات حول هذا الموضوع."
-                    2. الشمول والدقة: اجمع المعلومات من المرجع الثابت ومن الأبحاث الحية لتقديم إجابة متكاملة تخص الأبقار الحلوب. اذكر الأرقام، النسب المئوية، معدلات الأيض، والبيانات الدقيقة.
-                    3. التوثيق الأكاديمي: يجب توثيق كل معلومة داخل النص. إذا استخدمت معلومات من مرجع NASEM استخدم الرمز [NASEM]، وإذا استخدمت معلومات من الأبحاث المرفقة استخدم رقم المرجع مثل [1] أو [2].
-                    4. منع التأليف نهائياً: إذا لم تجد إجابة علمية دقيقة في الرابط الثابت أو في الأبحاث المرفقة، قل بوضوح: "لا توفر المراجع الحالية بيانات علمية دقيقة للإجابة على هذا السؤال".
-                    5. قسم المراجع: في نهاية الإجابة، قم بعمل قسم "المراجع العلمية" واذكر فيها روابط الأبحاث التي اعتمدت عليها فعلياً، بالإضافة إلى رابط NASEM الثابت إذا تم استخدامه.
+                    2. تحليل الصور: إذا أرفق المستخدم صورة، قم بفحصها بعناية شديدة (مثلاً: حدد درجة حالة الجسم BCS بناءً على الزوايا والعظام الظاهرة، أو قيم درجة الروث، أو جودة العلف) وقدم تقييماً علمياً دقيقاً بناءً على قواعد الأبقار الحلوب.
+                    3. الشمول والدقة: اجمع المعلومات من المرجع الثابت ومن الأبحاث الحية لتقديم إجابة متكاملة تخص الأبقار الحلوب. اذكر الأرقام، النسب المئوية، معدلات الأيض، والبيانات الدقيقة.
+                    4. التوثيق الأكاديمي: يجب توثيق كل معلومة داخل النص. إذا استخدمت معلومات من مرجع NASEM استخدم الرمز [NASEM]، وإذا استخدمت معلومات من الأبحاث المرفقة استخدم رقم المرجع مثل [1] أو [2].
+                    5. منع التأليف نهائياً: إذا لم تجد إجابة علمية دقيقة، قل بوضوح: "لا توفر المراجع الحالية بيانات علمية دقيقة للإجابة على هذا السؤال".
+                    6. قسم المراجع: في نهاية الإجابة، قم بعمل قسم "المراجع العلمية" واذكر فيها روابط الأبحاث التي اعتمدت عليها فعلياً، بالإضافة إلى رابط NASEM الثابت إذا تم استخدامه.
                     
                     سؤال المستخدم: {query}
                     
@@ -90,6 +111,11 @@ def process_query(query):
                     {context}
                     """
                     
+                    # دمج النص مع الصورة (إذا وجدت) لإرسالها للنموذج
+                    contents_to_send = [prompt]
+                    if img:
+                        contents_to_send.append(img)
+                        
                     answer = None
                     preferred_models = ["models/gemini-1.5-pro-latest", "models/gemini-pro"]
                     models_to_try = preferred_models + [m for m in available_models if m not in preferred_models]
@@ -97,7 +123,7 @@ def process_query(query):
                     for model_name in models_to_try:
                         try:
                             model = genai.GenerativeModel(model_name)
-                            answer = model.generate_content(prompt)
+                            answer = model.generate_content(contents_to_send)
                             break
                         except Exception:
                             continue
@@ -136,6 +162,7 @@ if len(st.session_state.messages) == 0:
             process_query("كيف يمكن تقييم وتحليل درجات روث الأبقار لضبط التغذية؟")
 
 # شريط الإدخال السفلي
-user_input = st.chat_input("اسأل عن الحميات، المكونات ــــ أو الصق حصة لتحليلها.")
+user_input = st.chat_input("اسأل عن الحميات، المكونات، أو ارفع صورة واسأل عنها...")
 if user_input:
-    process_query(user_input)
+    # نقوم بإرسال النص مع الصورة (إن وجدت في الشريط الجانبي)
+    process_query(user_input, img=img_to_analyze)
