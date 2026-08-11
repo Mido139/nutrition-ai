@@ -7,7 +7,7 @@ from PIL import Image  # مكتبة معالجة الصور
 # إعداد واجهة الموقع
 st.set_page_config(page_title="مساعد تغذية الأبقار الحلوب", page_icon="🐄", layout="centered")
 
-# --- تنسيق CSS مخصص لجعل الأزرار بيضاوية ولضبط شريط الصور ---
+# --- تنسيق CSS مخصص ---
 st.markdown("""
 <style>
     div[data-testid="stButton"] button {
@@ -24,7 +24,6 @@ st.markdown("""
         color: #4CAF50;
         background-color: #f9f9f9;
     }
-    /* تنسيق لتقليل المسافة بين زر رفع الصورة وشريط الكتابة */
     .stFileUploader {
         padding-bottom: 0rem;
         margin-bottom: -1rem;
@@ -32,9 +31,49 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- نظام تسجيل الدخول (Login System) ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.markdown("<h1 style='text-align: center;'>🔐 تسجيل الدخول</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>مرحباً بك في النظام الذكي لإدارة الأبقار الحلوب</p>", unsafe_allow_html=True)
+    
+    # يمكنك تغيير الإيميل والباسورد من هنا
+    CORRECT_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@cow.com")
+    CORRECT_PASSWORD = os.environ.get("ADMIN_PASSWORD", "123456")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.form("login_form"):
+            email = st.text_input("📧 البريد الإلكتروني")
+            password = st.text_input("🔑 كلمة المرور", type="password")
+            submit_button = st.form_submit_button("تسجيل الدخول", use_container_width=True)
+
+            if submit_button:
+                if email == CORRECT_EMAIL and password == CORRECT_PASSWORD:
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("❌ البريد الإلكتروني أو كلمة المرور غير صحيحة.")
+    
+    # إيقاف تشغيل باقي الموقع حتى ينجح تسجيل الدخول
+    st.stop()
+
+# ==========================================
+# --- إذا نجح تسجيل الدخول، سيعمل باقي الكود ---
+# ==========================================
+
 # عنوان التطبيق
 st.title("🐄 مساعد تغذية الأبقار الحلوب")
 st.write("مرحباً بك! أنا مساعدك الذكي المتخصص حصرياً في الأبحاث الأكاديمية لتغذية وإدارة الأبقار الحلوب.")
+
+# زر لتسجيل الخروج
+with st.sidebar:
+    if st.button("🚪 تسجيل الخروج", use_container_width=True):
+        st.session_state.logged_in = False
+        st.rerun()
+    st.write("---")
 
 # --- جزء سحب المفاتيح ---
 try:
@@ -56,7 +95,6 @@ if "chat_counter" not in st.session_state:
 with st.sidebar:
     st.header("💬 سجل المحادثات")
     
-    # زر إنشاء محادثة جديدة
     if st.button("➕ محادثة جديدة", use_container_width=True):
         st.session_state.chat_counter += 1
         new_chat_name = f"المحادثة {st.session_state.chat_counter}"
@@ -67,13 +105,10 @@ with st.sidebar:
     st.write("---")
     st.write("📚 محادثاتك:")
     
-    # عرض المحادثات السابقة كأزرار للتبديل بينها
     for chat_name in list(st.session_state.chats.keys()):
         if chat_name == st.session_state.current_chat:
-            # المحادثة الحالية (مظللة)
             st.button(f"🟢 {chat_name}", key=f"btn_{chat_name}", disabled=True, use_container_width=True)
         else:
-            # محادثات أخرى يمكن الضغط عليها للعودة إليها
             if st.button(f"⚪ {chat_name}", key=f"btn_{chat_name}", use_container_width=True):
                 st.session_state.current_chat = chat_name
                 st.rerun()
@@ -81,17 +116,15 @@ with st.sidebar:
 # جلب رسائل المحادثة الحالية لعرضها
 current_messages = st.session_state.chats[st.session_state.current_chat]
 
-# عرض الرسائل السابقة في المحادثة الحالية
+# عرض الرسائل السابقة
 for message in current_messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        # عرض الصورة في المحادثة إذا كانت موجودة
         if "image" in message and message["image"] is not None:
             st.image(message["image"], use_container_width=True)
 
 # دالة المعالجة الأساسية
 def process_query(query, img=None):
-    # حفظ الرسالة والصورة في المحادثة الحالية
     st.session_state.chats[st.session_state.current_chat].append({"role": "user", "content": query, "image": img})
     
     with st.chat_message("user"):
@@ -102,7 +135,6 @@ def process_query(query, img=None):
     with st.chat_message("assistant"):
         with st.spinner("جاري مسح قواعد البيانات العلمية وتحليل المعطيات..."):
             try:
-                # 1. تخصيص محرك البحث
                 scientific_query = query + " AND (dairy cattle OR dairy cows OR الأبقار الحلوب) (بحث علمي OR دراسة أكاديمية OR journal OR pubmed OR sciencedirect OR ncbi)"
                 tavily_client = TavilyClient(api_key=tavily_api_key)
                 search_response = tavily_client.search(scientific_query, search_depth="advanced", max_results=8)
@@ -111,7 +143,6 @@ def process_query(query, img=None):
                 for index, result in enumerate(search_response.get("results", [])):
                     context += f"مرجع رقم [{index + 1}]:\n- العنوان: {result['title']}\n- الرابط: {result['url']}\n- المعلومات: {result['content']}\n\n"
                 
-                # 2. إعداد Gemini بقوانين صارمة للحصر في الأبقار الحلوب فقط
                 genai.configure(api_key=gemini_api_key)
                 available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name]
                 
@@ -136,7 +167,6 @@ def process_query(query, img=None):
                     {context}
                     """
                     
-                    # دمج النص مع الصورة (إذا وجدت) لإرسالها للنموذج
                     contents_to_send = [prompt]
                     if img:
                         contents_to_send.append(img)
@@ -155,7 +185,6 @@ def process_query(query, img=None):
                     
                     if answer:
                         st.markdown(answer.text)
-                        # حفظ الإجابة في المحادثة الحالية
                         st.session_state.chats[st.session_state.current_chat].append({"role": "assistant", "content": answer.text})
                     else:
                         st.error("عذراً، لم نتمكن من معالجة الإجابة حالياً عبر النماذج المتاحة.")
@@ -165,7 +194,7 @@ def process_query(query, img=None):
             except Exception as e:
                 st.error(f"حدث خطأ أثناء المعالجة: {e}")
 
-# أزرار الاقتراحات السريعة (تظهر فقط إذا كانت المحادثة الحالية فارغة)
+# أزرار الاقتراحات السريعة
 if len(current_messages) == 0:
     st.write("") 
     col1, col2 = st.columns(2)
@@ -187,8 +216,8 @@ if len(current_messages) == 0:
         if st.button("💩 حلل صورة الروث لتحديد درجة الروث"):
             process_query("كيف يمكن تقييم وتحليل درجات روث الأبقار لضبط التغذية؟")
 
-# --- منطقة الإدخال السفلية (الصورة + النص) ---
-st.write("---") # فاصل مرئي بسيط
+# --- منطقة الإدخال السفلية ---
+st.write("---")
 uploaded_file = st.file_uploader("📷 إرفاق صورة للتحليل (اختياري)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
