@@ -52,9 +52,9 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        # عرض الصورة في المحادثة إذا كانت موجودة
+        # عرض الصورة في المحادثة إذا كانت موجودة (تم التحديث هنا)
         if "image" in message and message["image"] is not None:
-            st.image(message["image"], use_column_width=True)
+            st.image(message["image"], use_container_width=True)
 
 # دالة المعالجة الأساسية
 def process_query(query, img=None):
@@ -63,8 +63,9 @@ def process_query(query, img=None):
     
     with st.chat_message("user"):
         st.markdown(query)
+        # تم التحديث هنا أيضاً
         if img:
-            st.image(img, caption="الصورة المرفقة", use_column_width=True)
+            st.image(img, caption="الصورة المرفقة", use_container_width=True)
 
     with st.chat_message("assistant"):
         with st.spinner("جاري مسح قواعد البيانات العلمية وتحليل المعطيات..."):
