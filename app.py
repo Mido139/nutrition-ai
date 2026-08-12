@@ -45,16 +45,12 @@ st.markdown("""
 # --- الاتصال بقاعدة بيانات Firebase ---
 # ==========================================
 if not firebase_admin._apps:
-    # 1. محاولة جلب المفتاح من متغيرات البيئة (في حالة الرفع على Render)
     firebase_creds_str = os.environ.get("FIREBASE_CREDENTIALS")
-    
     if firebase_creds_str:
         creds_dict = json.loads(firebase_creds_str)
         cred = credentials.Certificate(creds_dict)
     else:
-        # 2. محاولة جلب المفتاح من الملف المحلي (في حالة التشغيل من VS Code)
         cred = credentials.Certificate("firebase_key.json")
-        
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
@@ -90,7 +86,6 @@ def save_user_chats(email, chats_dict):
     for chat_name, msgs in chats_dict.items():
         clean_msgs = []
         for msg in msgs:
-            # نستثني الصورة لأن قاعدة البيانات لا تحفظ الكائنات المعقدة
             clean_msgs.append({"role": msg.get("role"), "content": msg.get("content")})
         clean_chats[chat_name] = clean_msgs
     db.collection("chats").document(email).set(clean_chats)
@@ -237,8 +232,6 @@ if not st.session_state.logged_in:
     st.markdown(f"<h1 style='text-align: center;'>{t['auth_title']}</h1>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align: center;'>{t['auth_sub']}</p>", unsafe_allow_html=True)
     
-    users_db = load_users()
-    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         tab1, tab2 = st.tabs([t['tab_login'], t['tab_register']])
@@ -257,20 +250,27 @@ if not st.session_state.logged_in:
                         st.session_state.user_name = "المدير (Admin)"
                         st.session_state.is_admin = True
                         st.rerun()
-                    elif log_email in users_db and users_db[log_email]["password"] == hashed_pass:
-                        user_status = users_db[log_email].get("status")
-                        if user_status == "approved":
-                            st.session_state.logged_in = True
-                            st.session_state.user_email = log_email
-                            st.session_state.user_name = users_db[log_email]["name"]
-                            st.session_state.is_admin = False
-                            st.rerun()
-                        elif user_status == "pending":
-                            st.warning(t['pending_err'])
-                        elif user_status == "suspended":
-                            st.error(t['suspended_err'])
-                    else:
-                        st.error(t['login_err'])
+                    elif log_email and log_pass:
+                        doc_ref = db.collection("users").document(log_email)
+                        doc = doc_ref.get()
+                        if doc.exists:
+                            user_data = doc.to_dict()
+                            if user_data.get("password") == hashed_pass:
+                                user_status = user_data.get("status")
+                                if user_status == "approved":
+                                    st.session_state.logged_in = True
+                                    st.session_state.user_email = log_email
+                                    st.session_state.user_name = user_data.get("name")
+                                    st.session_state.is_admin = False
+                                    st.rerun()
+                                elif user_status == "pending":
+                                    st.warning(t['pending_err'])
+                                elif user_status == "suspended":
+                                    st.error(t['suspended_err'])
+                            else:
+                                st.error(t['login_err'])
+                        else:
+                            st.error(t['login_err'])
                         
         with tab2:
             with st.form("register_form"):
@@ -283,15 +283,19 @@ if not st.session_state.logged_in:
                 if btn_register:
                     if reg_pass != reg_pass_conf:
                         st.error(t['reg_err_pass'])
-                    elif reg_email in users_db or reg_email == ADMIN_EMAIL:
+                    elif reg_email == ADMIN_EMAIL:
                         st.error(t['reg_err_exists'])
                     elif reg_email and reg_pass and reg_name:
-                        save_user(reg_email, {
-                            "name": reg_name,
-                            "password": hash_password(reg_pass),
-                            "status": "pending" 
-                        })
-                        st.success(t['reg_succ'])
+                        doc_ref = db.collection("users").document(reg_email)
+                        if doc_ref.get().exists:
+                            st.error(t['reg_err_exists'])
+                        else:
+                            save_user(reg_email, {
+                                "name": reg_name,
+                                "password": hash_password(reg_pass),
+                                "status": "pending" 
+                            })
+                            st.success(t['reg_succ'])
     st.stop()
 
 # ==========================================
