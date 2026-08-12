@@ -1,0 +1,5 @@
+firebase_key.json
+.streamlit/secrets.toml
+chats_history.json
+users_db.json
+__pycache__/
