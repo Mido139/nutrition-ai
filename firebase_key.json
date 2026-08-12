@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "dairy-cattle-app",
+  "private_key_id": "883b380ad4bd09edf968bbef972e3302b9166467",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDC1jK9Tnp6DRof\nEqwwZI8N61TWgyAtEanDP8QP+wAaAvoL6azQVW4rBDz++flGgjUZoiq1+5p/G8b8\nyyyex1QkjQxDdK6GU0zm4uYBJzVlsqSJ8jFNq3hL/TfkraS2+gSGpXh8SuXqhxZl\nvhXG+jgCsiIWlactR4wn7Uoc380yeJ6WSbvqUMt4ek0YBrvd/H1PjBnRzgn9m1cR\nYQ+h6Dq47TdubLueGQcAaTI/tFSqxiGhS327FvKmQ8mFG/klIgSxEW+FZxi7MPRr\nX2JBmEGPoTe3gagjWnjc5Bgsd+IWB0IcMXBmBp9TSPY3XHmAWGE7ceMGx2DZBRry\n13gZAYepAgMBAAECggEAYRP06BoIMHQCxeS54srX9GmDNfbTu2EHov9Mo2G+5TcC\ne5kMwCkw4UIVWj4XFCigaItCmLYqfpbKiP561woeRK/6okmrA8bRlGENlRmCI4/l\nJ86C/l4nbEVY6hoS7hCY3LXp2JRBBqAUatFRbHkUG1PCZFpgl9EEZoh22vgv96r9\n5g8XNTLmmgj08CkcmOaUjzi2kFnXutTLjcgi/Xfp2eurLjwsnV154QOLWM/3uT8M\nk1l8qxND44yOkVprTtroOnRDMbNp8dkh0251m1EM/CfiJ2WwMDz62ud2YAwwVsvW\nqB9mOwBkSiY3z4KIbZMYUQnibtWC9mDdD0SlYZtumQKBgQD6Yt07mnsW6qn8Zg0P\nBk4vFXn19r8Uwv0df1tw7vjfDyvCII96X8Z+YniEfG23Ck4jUXisUN/yOq2Kxim9\nHA5gYt/ZsGeOaJaPS5GRfsB10BEbB88eFWjYXo+K9gbsAKUb4ZlAzvcygSthQwtc\n50K5d1rzU/QmHlNq5IAKGFCY3wKBgQDHNH96rj2RdK7Q6e9qMErevy4lOibWVcFY\nFAoJFno0r19ryZS686PWilxk+bx9iXX02ppLCWjq8tXPH7ZxdhxR3gy5tQXYpdZf\nMWTpQRru8H3z5M4nekvKnBJnvgyb7x+4KKQVewExkEHpZA/yr4qcJXlEVMORL+pv\nuMfQzCyIdwKBgQDJnAWLUq4+G6HYC8wEBw25N8/GT3I4o3Dv6XaVjrZx1WNkopck\n8C2B4oQsGYy2T+Pu6FEEXvKTts+56Cn/jbG9xp98R2B6+JgStcR2pNsPggPkAfux\nu4d6gVmPiN619Sb9NkASQRQmZH+rhzKFEelWMVbYiwcSEmUUsvyuJDnxfQKBgBIz\ndcJb0TxNEPv9o+Zr6ytXBHxaR9olk7jce95As4HE1E8g5/n88OdVVQPU3agKu0BY\nCOj6Px/YeDioiR7sz8GbLEZ7h8E3xdKEzNeTH0bdqmRyb3Oj9PDaOcRI1RYaTyeg\nbv2Xc5B3wc31Wo+uAlgqBF598DB/1EfI9ljZjugZAoGAXIvDXY/pgrz5tTkT7oNj\n3+GD0gUAQzjJf8NuPt3KzuqUWvenVV1S9/bt6zi0LH4YZMaTgvIi9Q7Lkkwk90MF\nWVp/eWeNNGLfe/oEATsPFrHF0oK3jzPsNAwXRIXYbw0Z3wAaA0K2EyMlie2M2nhR\nCv1gfeA4okwm96eal1Z/epc=\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@dairy-cattle-app.iam.gserviceaccount.com",
+  "client_id": "117359581661456601439",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40dairy-cattle-app.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
