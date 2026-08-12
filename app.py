@@ -48,6 +48,8 @@ if not firebase_admin._apps:
     firebase_creds_str = os.environ.get("FIREBASE_CREDENTIALS")
     if firebase_creds_str:
         creds_dict = json.loads(firebase_creds_str)
+        # السطر السحري لحل مشكلة التوقيع على سيرفر Render
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         cred = credentials.Certificate(creds_dict)
     else:
         cred = credentials.Certificate("firebase_key.json")
