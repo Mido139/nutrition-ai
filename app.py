@@ -30,6 +30,9 @@ st.markdown("""
         padding-bottom: 0rem;
         margin-bottom: -1rem;
     }
+    hr {
+        margin: 0.5em 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,6 +54,7 @@ ui = {
         "register_btn": "طلب إنشاء الحساب",
         "login_err": "❌ البريد الإلكتروني أو كلمة المرور غير صحيحة.",
         "pending_err": "⏳ حسابك قيد المراجعة. يرجى انتظار موافقة الإدارة.",
+        "suspended_err": "🚫 حسابك موقوف حالياً من قبل الإدارة.",
         "reg_err_pass": "❌ كلمتا المرور غير متطابقتين.",
         "reg_err_exists": "❌ هذا البريد الإلكتروني مسجل بالفعل.",
         "reg_succ": "✅ تم إرسال طلبك للإدارة! لن تتمكن من الدخول حتى تتم الموافقة عليه.",
@@ -58,9 +62,15 @@ ui = {
         "main_title": "🐄 مساعد تغذية الأبقار الحلوب",
         "main_desc": "أنا مساعدك الذكي المتخصص حصرياً في الأبحاث الأكاديمية لتغذية وإدارة الأبقار الحلوب.",
         "sidebar_title": "💬 سجل المحادثات",
-        "admin_title": "🛠️ لوحة الإدارة",
-        "no_pending": "لا توجد طلبات معلقة.",
-        "approve_btn": "✅ قبول الحساب",
+        "admin_title": "🛠️ إدارة الحسابات",
+        "admin_pending": "⏳ بانتظار الموافقة",
+        "admin_approved": "🟢 الحسابات النشطة",
+        "admin_suspended": "🔴 الحسابات الموقوفة",
+        "no_users": "لا يوجد حسابات هنا.",
+        "approve_btn": "✅ قبول",
+        "suspend_btn": "⛔ إيقاف",
+        "reactivate_btn": "✅ تفعيل",
+        "delete_btn": "🗑️ حذف",
         "new_chat": "➕ محادثة جديدة",
         "your_chats": "📚 محادثاتك:",
         "chat_prefix": "المحادثة",
@@ -98,6 +108,7 @@ ui = {
         "register_btn": "Request Account",
         "login_err": "❌ Invalid email or password.",
         "pending_err": "⏳ Your account is pending admin approval.",
+        "suspended_err": "🚫 Your account is currently suspended by the Admin.",
         "reg_err_pass": "❌ Passwords do not match.",
         "reg_err_exists": "❌ Email is already registered.",
         "reg_succ": "✅ Request sent to Admin! You can login once approved.",
@@ -105,9 +116,15 @@ ui = {
         "main_title": "🐄 Dairy Cattle Nutrition Assistant",
         "main_desc": "I am your AI assistant specialized exclusively in academic research for dairy cattle nutrition.",
         "sidebar_title": "💬 Chat History",
-        "admin_title": "🛠️ Admin Panel",
-        "no_pending": "No pending requests.",
-        "approve_btn": "✅ Approve Account",
+        "admin_title": "🛠️ Account Management",
+        "admin_pending": "⏳ Pending Approval",
+        "admin_approved": "🟢 Active Accounts",
+        "admin_suspended": "🔴 Suspended Accounts",
+        "no_users": "No accounts here.",
+        "approve_btn": "✅ Approve",
+        "suspend_btn": "⛔ Suspend",
+        "reactivate_btn": "✅ Reactivate",
+        "delete_btn": "🗑️ Delete",
         "new_chat": "➕ New Chat",
         "your_chats": "📚 Your Chats:",
         "chat_prefix": "Chat",
@@ -154,7 +171,6 @@ CHATS_FILE = "chats_history.json"
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@cow.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "123456")
 
-# دالة تشفير كلمة المرور
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -207,7 +223,7 @@ if not st.session_state.logged_in:
                 if btn_login:
                     hashed_pass = hash_password(log_pass)
                     
-                    # التحقق إذا كان المدير (Admin)
+                    # تحقق الإدارة
                     if log_email == ADMIN_EMAIL and log_pass == ADMIN_PASSWORD:
                         st.session_state.logged_in = True
                         st.session_state.user_email = log_email
@@ -215,17 +231,19 @@ if not st.session_state.logged_in:
                         st.session_state.is_admin = True
                         st.rerun()
                         
-                    # التحقق من المستخدمين العاديين
+                    # تحقق المستخدمين العاديين
                     elif log_email in users_db and users_db[log_email]["password"] == hashed_pass:
-                        # التأكد من حالة الحساب (هل تم قبوله؟)
-                        if users_db[log_email].get("status") == "approved":
+                        user_status = users_db[log_email].get("status")
+                        if user_status == "approved":
                             st.session_state.logged_in = True
                             st.session_state.user_email = log_email
                             st.session_state.user_name = users_db[log_email]["name"]
                             st.session_state.is_admin = False
                             st.rerun()
-                        else:
-                            st.warning(t['pending_err']) # رسالة أن الحساب قيد المراجعة
+                        elif user_status == "pending":
+                            st.warning(t['pending_err'])
+                        elif user_status == "suspended":
+                            st.error(t['suspended_err'])
                     else:
                         st.error(t['login_err'])
                         
@@ -244,7 +262,6 @@ if not st.session_state.logged_in:
                     elif reg_email in users_db or reg_email == ADMIN_EMAIL:
                         st.error(t['reg_err_exists'])
                     elif reg_email and reg_pass and reg_name:
-                        # إضافة المستخدم كـ "معلق" (pending)
                         users_db[reg_email] = {
                             "name": reg_name,
                             "password": hash_password(reg_pass),
@@ -258,27 +275,72 @@ if not st.session_state.logged_in:
 # --- الواجهة الرئيسية (بعد تسجيل الدخول) ---
 # ==========================================
 
-# --- لوحة تحكم الإدارة (تظهر فقط إذا كان الحساب هو الإدارة) ---
+# --- لوحة تحكم الإدارة الشاملة (تظهر فقط للمدير) ---
 if st.session_state.is_admin:
     with st.sidebar:
         st.header(t['admin_title'])
         users_db = load_users()
-        # جلب الحسابات المعلقة فقط
-        pending_users = {email: data for email, data in users_db.items() if data.get("status") == "pending"}
         
+        # 1. الحسابات المعلقة
+        st.subheader(t['admin_pending'])
+        pending_users = {e: d for e, d in users_db.items() if d.get("status") == "pending"}
         if pending_users:
             for p_email, p_data in pending_users.items():
                 st.write(f"👤 {p_data['name']} \n({p_email})")
-                if st.button(f"{t['approve_btn']}", key=f"approve_{p_email}", use_container_width=True):
+                c1, c2 = st.columns(2)
+                if c1.button(t['approve_btn'], key=f"app_{p_email}", use_container_width=True):
                     users_db[p_email]["status"] = "approved"
                     save_users(users_db)
                     st.rerun()
-                st.write("---")
+                if c2.button(t['delete_btn'], key=f"del_p_{p_email}", use_container_width=True):
+                    del users_db[p_email]
+                    save_users(users_db)
+                    st.rerun()
+                st.markdown("<hr>", unsafe_allow_html=True)
         else:
-            st.info(t['no_pending'])
+            st.info(t['no_users'])
+
+        # 2. الحسابات النشطة
+        st.subheader(t['admin_approved'])
+        approved_users = {e: d for e, d in users_db.items() if d.get("status") == "approved"}
+        if approved_users:
+            for a_email, a_data in approved_users.items():
+                st.write(f"🟢 {a_data['name']} \n({a_email})")
+                c1, c2 = st.columns(2)
+                if c1.button(t['suspend_btn'], key=f"sus_{a_email}", use_container_width=True):
+                    users_db[a_email]["status"] = "suspended"
+                    save_users(users_db)
+                    st.rerun()
+                if c2.button(t['delete_btn'], key=f"del_a_{a_email}", use_container_width=True):
+                    del users_db[a_email]
+                    save_users(users_db)
+                    st.rerun()
+                st.markdown("<hr>", unsafe_allow_html=True)
+        else:
+            st.info(t['no_users'])
+
+        # 3. الحسابات الموقوفة
+        st.subheader(t['admin_suspended'])
+        suspended_users = {e: d for e, d in users_db.items() if d.get("status") == "suspended"}
+        if suspended_users:
+            for s_email, s_data in suspended_users.items():
+                st.write(f"🔴 {s_data['name']} \n({s_email})")
+                c1, c2 = st.columns(2)
+                if c1.button(t['reactivate_btn'], key=f"react_{s_email}", use_container_width=True):
+                    users_db[s_email]["status"] = "approved"
+                    save_users(users_db)
+                    st.rerun()
+                if c2.button(t['delete_btn'], key=f"del_s_{s_email}", use_container_width=True):
+                    del users_db[s_email]
+                    save_users(users_db)
+                    st.rerun()
+                st.markdown("<hr>", unsafe_allow_html=True)
+        else:
+            st.info(t['no_users'])
+            
         st.write("---")
 
-# تحميل محادثات المستخدم الحالي فقط
+# تحميل محادثات المستخدم الحالي
 all_chats_db = load_all_chats()
 user_email = st.session_state.user_email
 
@@ -288,7 +350,7 @@ if user_email not in all_chats_db:
 
 user_chats = all_chats_db[user_email]
 
-# عنوان التطبيق والترحيب بالمستخدم
+# عنوان التطبيق
 st.title(t['main_title'])
 st.write(f"👋 أهلاً بك، **{st.session_state.user_name}**! {t['main_desc']}")
 
@@ -314,7 +376,7 @@ if "current_chat" not in st.session_state or st.session_state.current_chat not i
 if "chat_counter" not in st.session_state:
     st.session_state.chat_counter = len(user_chats) if user_chats else 1
 
-# إدارة المحادثات في الشريط الجانبي
+# إدارة المحادثات في الشريط الجانبي (للمستخدمين العاديين والمدير)
 with st.sidebar:
     st.header(t['sidebar_title'])
     
