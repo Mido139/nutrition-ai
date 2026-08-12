@@ -2,11 +2,13 @@ import streamlit as st
 import google.generativeai as genai
 from tavily import TavilyClient
 import os
-import json
 import hashlib
 from PIL import Image
+import pymongo
 
-# إعداد واجهة الموقع
+# ==========================================
+# --- إعداد واجهة الموقع ---
+# ==========================================
 st.set_page_config(page_title="Dairy Cattle AI | مساعد تغذية الأبقار", page_icon="🐄", layout="centered")
 
 # --- تنسيق CSS مخصص ---
@@ -153,7 +155,6 @@ ui = {
 
 t = ui[st.session_state.lang]
 
-# --- زر تبديل اللغة ---
 with st.sidebar:
     lang_button_label = "🌐 Switch to English" if st.session_state.lang == "ar" else "🌐 التبديل للعربية"
     if st.button(lang_button_label, use_container_width=True):
@@ -162,12 +163,24 @@ with st.sidebar:
     st.write("---")
 
 # ==========================================
-# --- نظام قواعد البيانات المحلية (Users & Chats) ---
+# --- الاتصال بقاعدة بيانات MongoDB ---
 # ==========================================
-USERS_FILE = "users_db.json"
-CHATS_FILE = "chats_history.json"
+# استدعاء الرابط من إعدادات Render أو من الأسرار المحلية
+MONGO_URI = os.environ.get("MONGO_URI") or st.secrets.get("MONGO_URI", "")
 
-# إيميل وباسورد الإدارة الأساسي
+@st.cache_resource
+def init_connection():
+    return pymongo.MongoClient(MONGO_URI)
+
+try:
+    client = init_connection()
+    db = client["dairy_cattle_app"]
+    users_collection = db["users"]
+    chats_collection = db["chats"]
+except Exception as e:
+    st.error("⚠️ فشل الاتصال بقاعدة البيانات. تأكد من إعداد رابط MONGO_URI بشكل صحيح.")
+    st.stop()
+
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@cow.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "123456")
 
@@ -175,24 +188,26 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+    users = {}
+    for doc in users_collection.find():
+        users[doc["_id"]] = doc
+    return users
+
+def save_user(email, data):
+    data["_id"] = email
+    users_collection.update_one({"_id": email}, {"$set": data}, upsert=True)
+
+def delete_user(email):
+    users_collection.delete_one({"_id": email})
+
+def load_user_chats(email):
+    doc = chats_collection.find_one({"_id": email})
+    if doc:
+        return doc.get("chats", {})
     return {}
 
-def save_users(users_dict):
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users_dict, f, ensure_ascii=False, indent=4)
-
-def load_all_chats():
-    if os.path.exists(CHATS_FILE):
-        with open(CHATS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def save_all_chats(all_chats_dict):
-    with open(CHATS_FILE, "w", encoding="utf-8") as f:
-        json.dump(all_chats_dict, f, ensure_ascii=False, indent=4)
+def save_user_chats(email, chats_dict):
+    chats_collection.update_one({"_id": email}, {"$set": {"chats": chats_dict}}, upsert=True)
 
 # ==========================================
 # --- نظام تسجيل الدخول وإنشاء الحساب ---
@@ -206,8 +221,6 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     st.markdown(f"<h1 style='text-align: center;'>{t['auth_title']}</h1>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align: center;'>{t['auth_sub']}</p>", unsafe_allow_html=True)
-    
-    users_db = load_users()
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -223,29 +236,28 @@ if not st.session_state.logged_in:
                 if btn_login:
                     hashed_pass = hash_password(log_pass)
                     
-                    # تحقق الإدارة
                     if log_email == ADMIN_EMAIL and log_pass == ADMIN_PASSWORD:
                         st.session_state.logged_in = True
                         st.session_state.user_email = log_email
                         st.session_state.user_name = "المدير (Admin)"
                         st.session_state.is_admin = True
                         st.rerun()
-                        
-                    # تحقق المستخدمين العاديين
-                    elif log_email in users_db and users_db[log_email]["password"] == hashed_pass:
-                        user_status = users_db[log_email].get("status")
-                        if user_status == "approved":
-                            st.session_state.logged_in = True
-                            st.session_state.user_email = log_email
-                            st.session_state.user_name = users_db[log_email]["name"]
-                            st.session_state.is_admin = False
-                            st.rerun()
-                        elif user_status == "pending":
-                            st.warning(t['pending_err'])
-                        elif user_status == "suspended":
-                            st.error(t['suspended_err'])
                     else:
-                        st.error(t['login_err'])
+                        user_doc = users_collection.find_one({"_id": log_email})
+                        if user_doc and user_doc["password"] == hashed_pass:
+                            user_status = user_doc.get("status")
+                            if user_status == "approved":
+                                st.session_state.logged_in = True
+                                st.session_state.user_email = log_email
+                                st.session_state.user_name = user_doc["name"]
+                                st.session_state.is_admin = False
+                                st.rerun()
+                            elif user_status == "pending":
+                                st.warning(t['pending_err'])
+                            elif user_status == "suspended":
+                                st.error(t['suspended_err'])
+                        else:
+                            st.error(t['login_err'])
                         
         # تبويب إنشاء حساب جديد
         with tab2:
@@ -259,15 +271,14 @@ if not st.session_state.logged_in:
                 if btn_register:
                     if reg_pass != reg_pass_conf:
                         st.error(t['reg_err_pass'])
-                    elif reg_email in users_db or reg_email == ADMIN_EMAIL:
+                    elif users_collection.find_one({"_id": reg_email}) or reg_email == ADMIN_EMAIL:
                         st.error(t['reg_err_exists'])
                     elif reg_email and reg_pass and reg_name:
-                        users_db[reg_email] = {
+                        save_user(reg_email, {
                             "name": reg_name,
                             "password": hash_password(reg_pass),
                             "status": "pending" 
-                        }
-                        save_users(users_db)
+                        })
                         st.success(t['reg_succ'])
     st.stop()
 
@@ -289,12 +300,11 @@ if st.session_state.is_admin:
                 st.write(f"👤 {p_data['name']} \n({p_email})")
                 c1, c2 = st.columns(2)
                 if c1.button(t['approve_btn'], key=f"app_{p_email}", use_container_width=True):
-                    users_db[p_email]["status"] = "approved"
-                    save_users(users_db)
+                    p_data["status"] = "approved"
+                    save_user(p_email, p_data)
                     st.rerun()
                 if c2.button(t['delete_btn'], key=f"del_p_{p_email}", use_container_width=True):
-                    del users_db[p_email]
-                    save_users(users_db)
+                    delete_user(p_email)
                     st.rerun()
                 st.markdown("<hr>", unsafe_allow_html=True)
         else:
@@ -308,12 +318,11 @@ if st.session_state.is_admin:
                 st.write(f"🟢 {a_data['name']} \n({a_email})")
                 c1, c2 = st.columns(2)
                 if c1.button(t['suspend_btn'], key=f"sus_{a_email}", use_container_width=True):
-                    users_db[a_email]["status"] = "suspended"
-                    save_users(users_db)
+                    a_data["status"] = "suspended"
+                    save_user(a_email, a_data)
                     st.rerun()
                 if c2.button(t['delete_btn'], key=f"del_a_{a_email}", use_container_width=True):
-                    del users_db[a_email]
-                    save_users(users_db)
+                    delete_user(a_email)
                     st.rerun()
                 st.markdown("<hr>", unsafe_allow_html=True)
         else:
@@ -327,12 +336,11 @@ if st.session_state.is_admin:
                 st.write(f"🔴 {s_data['name']} \n({s_email})")
                 c1, c2 = st.columns(2)
                 if c1.button(t['reactivate_btn'], key=f"react_{s_email}", use_container_width=True):
-                    users_db[s_email]["status"] = "approved"
-                    save_users(users_db)
+                    s_data["status"] = "approved"
+                    save_user(s_email, s_data)
                     st.rerun()
                 if c2.button(t['delete_btn'], key=f"del_s_{s_email}", use_container_width=True):
-                    del users_db[s_email]
-                    save_users(users_db)
+                    delete_user(s_email)
                     st.rerun()
                 st.markdown("<hr>", unsafe_allow_html=True)
         else:
@@ -340,28 +348,22 @@ if st.session_state.is_admin:
             
         st.write("---")
 
-# تحميل محادثات المستخدم الحالي
-all_chats_db = load_all_chats()
 user_email = st.session_state.user_email
+user_chats = load_user_chats(user_email)
 
-if user_email not in all_chats_db:
-    all_chats_db[user_email] = {f"{t['chat_prefix']} 1": []}
-    save_all_chats(all_chats_db)
+if not user_chats:
+    user_chats = {f"{t['chat_prefix']} 1": []}
+    save_user_chats(user_email, user_chats)
 
-user_chats = all_chats_db[user_email]
-
-# عنوان التطبيق
 st.title(t['main_title'])
 st.write(f"👋 أهلاً بك، **{st.session_state.user_name}**! {t['main_desc']}")
 
-# زر تسجيل الخروج
 with st.sidebar:
     if st.button(t['logout_btn'], use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
     st.write("---")
 
-# مفاتيح الـ API
 try:
     gemini_api_key = os.environ.get("GEMINI_API_KEY") or st.secrets["GEMINI_API_KEY"]
     tavily_api_key = os.environ.get("TAVILY_API_KEY") or st.secrets["TAVILY_API_KEY"]
@@ -369,14 +371,12 @@ except Exception:
     st.error(t['api_missing'])
     st.stop()
 
-# إعداد الذاكرة للمحادثة الحالية
 if "current_chat" not in st.session_state or st.session_state.current_chat not in user_chats:
     st.session_state.current_chat = list(user_chats.keys())[-1] if user_chats else f"{t['chat_prefix']} 1"
 
 if "chat_counter" not in st.session_state:
     st.session_state.chat_counter = len(user_chats) if user_chats else 1
 
-# إدارة المحادثات في الشريط الجانبي (للمستخدمين العاديين والمدير)
 with st.sidebar:
     st.header(t['sidebar_title'])
     
@@ -384,8 +384,7 @@ with st.sidebar:
         st.session_state.chat_counter += 1
         new_chat_name = f"{t['chat_prefix']} {st.session_state.chat_counter}"
         user_chats[new_chat_name] = []
-        all_chats_db[user_email] = user_chats
-        save_all_chats(all_chats_db)
+        save_user_chats(user_email, user_chats)
         st.session_state.current_chat = new_chat_name
         st.rerun()
         
@@ -408,11 +407,9 @@ for message in current_messages:
         if "image" in message and message["image"] is not None:
             st.image(message["image"], use_container_width=True)
 
-# دالة المعالجة الأساسية
 def process_query(query, img=None):
     user_chats[st.session_state.current_chat].append({"role": "user", "content": query, "image": img})
-    all_chats_db[user_email] = user_chats
-    save_all_chats(all_chats_db)
+    save_user_chats(user_email, user_chats)
     
     with st.chat_message("user"):
         st.markdown(query)
@@ -474,8 +471,7 @@ def process_query(query, img=None):
                     if answer:
                         st.markdown(answer.text)
                         user_chats[st.session_state.current_chat].append({"role": "assistant", "content": answer.text})
-                        all_chats_db[user_email] = user_chats
-                        save_all_chats(all_chats_db)
+                        save_user_chats(user_email, user_chats)
                     else:
                         st.error(t['ai_err'])
                 else:
@@ -484,7 +480,6 @@ def process_query(query, img=None):
             except Exception as e:
                 st.error(f"{t['sys_err']} {e}")
 
-# أزرار الاقتراحات السريعة
 if len(current_messages) == 0:
     st.write("") 
     col1, col2 = st.columns(2)
@@ -506,7 +501,6 @@ if len(current_messages) == 0:
         if st.button(t['sugg_5_btn']):
             process_query(t['sugg_5_q'])
 
-# --- منطقة الإدخال السفلية ---
 st.write("---")
 uploaded_file = st.file_uploader(t['upload_lbl'], type=["jpg", "jpeg", "png"])
 
