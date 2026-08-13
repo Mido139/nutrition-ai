@@ -4,14 +4,14 @@ from tavily import TavilyClient
 import os
 import hashlib
 from PIL import Image
-import pymongo
+from sqlalchemy import create_engine, Column, String, JSON
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # ==========================================
 # --- إعداد واجهة الموقع ---
 # ==========================================
 st.set_page_config(page_title="Dairy Cattle AI | مساعد تغذية الأبقار", page_icon="🐄", layout="centered")
 
-# --- تنسيق CSS مخصص ---
 st.markdown("""
 <style>
     div[data-testid="stButton"] button {
@@ -38,7 +38,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- نظام اللغات والترجمة ---
 if "lang" not in st.session_state:
     st.session_state.lang = "ar"
 
@@ -163,22 +162,40 @@ with st.sidebar:
     st.write("---")
 
 # ==========================================
-# --- الاتصال بقاعدة بيانات MongoDB ---
+# --- الاتصال بقاعدة بيانات TiDB Serverless (SQL) ---
 # ==========================================
-# استدعاء الرابط من إعدادات Render أو من الأسرار المحلية
-MONGO_URI = os.environ.get("MONGO_URI") or st.secrets.get("MONGO_URI", "")
+TIDB_URI = os.environ.get("TIDB_URI") or st.secrets.get("TIDB_URI", "")
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = 'users'
+    email = Column(String(255), primary_key=True)
+    name = Column(String(255))
+    password = Column(String(255))
+    status = Column(String(50))
+
+class UserChats(Base):
+    __tablename__ = 'user_chats'
+    email = Column(String(255), primary_key=True)
+    chats = Column(JSON, default=dict)
 
 @st.cache_resource
-def init_connection():
-    return pymongo.MongoClient(MONGO_URI)
+def get_sessionmaker():
+    if not TIDB_URI:
+        return None
+    try:
+        engine = create_engine(TIDB_URI, pool_recycle=3600, pool_pre_ping=True)
+        Base.metadata.create_all(engine)
+        return sessionmaker(bind=engine)
+    except Exception as e:
+        st.error(f"⚠️ فشل الاتصال بقاعدة البيانات: {e}")
+        return None
 
-try:
-    client = init_connection()
-    db = client["dairy_cattle_app"]
-    users_collection = db["users"]
-    chats_collection = db["chats"]
-except Exception as e:
-    st.error("⚠️ فشل الاتصال بقاعدة البيانات. تأكد من إعداد رابط MONGO_URI بشكل صحيح.")
+Session = get_sessionmaker()
+
+if not Session:
+    st.error("⚠️ يرجى التأكد من إضافة رابط TIDB_URI في إعدادات البيئة.")
     st.stop()
 
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@cow.com")
@@ -188,26 +205,44 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def load_users():
-    users = {}
-    for doc in users_collection.find():
-        users[doc["_id"]] = doc
-    return users
+    with Session() as session:
+        users = session.query(User).all()
+        return {u.email: {"name": u.name, "password": u.password, "status": u.status} for u in users}
 
 def save_user(email, data):
-    data["_id"] = email
-    users_collection.update_one({"_id": email}, {"$set": data}, upsert=True)
+    with Session() as session:
+        user = session.query(User).filter_by(email=email).first()
+        if not user:
+            user = User(email=email)
+            session.add(user)
+        user.name = data.get("name")
+        user.password = data.get("password")
+        user.status = data.get("status")
+        session.commit()
 
 def delete_user(email):
-    users_collection.delete_one({"_id": email})
+    with Session() as session:
+        user = session.query(User).filter_by(email=email).first()
+        if user:
+            session.delete(user)
+            session.commit()
 
 def load_user_chats(email):
-    doc = chats_collection.find_one({"_id": email})
-    if doc:
-        return doc.get("chats", {})
-    return {}
+    with Session() as session:
+        uc = session.query(UserChats).filter_by(email=email).first()
+        if uc and uc.chats:
+            return uc.chats
+        return {}
 
 def save_user_chats(email, chats_dict):
-    chats_collection.update_one({"_id": email}, {"$set": {"chats": chats_dict}}, upsert=True)
+    with Session() as session:
+        uc = session.query(UserChats).filter_by(email=email).first()
+        if not uc:
+            uc = UserChats(email=email, chats=chats_dict)
+            session.add(uc)
+        else:
+            uc.chats = dict(chats_dict)
+        session.commit()
 
 # ==========================================
 # --- نظام تسجيل الدخول وإنشاء الحساب ---
@@ -226,7 +261,6 @@ if not st.session_state.logged_in:
     with col2:
         tab1, tab2 = st.tabs([t['tab_login'], t['tab_register']])
         
-        # تبويب تسجيل الدخول
         with tab1:
             with st.form("login_form"):
                 log_email = st.text_input(t['email_label'])
@@ -243,13 +277,13 @@ if not st.session_state.logged_in:
                         st.session_state.is_admin = True
                         st.rerun()
                     else:
-                        user_doc = users_collection.find_one({"_id": log_email})
-                        if user_doc and user_doc["password"] == hashed_pass:
-                            user_status = user_doc.get("status")
+                        users_db = load_users()
+                        if log_email in users_db and users_db[log_email]["password"] == hashed_pass:
+                            user_status = users_db[log_email].get("status")
                             if user_status == "approved":
                                 st.session_state.logged_in = True
                                 st.session_state.user_email = log_email
-                                st.session_state.user_name = user_doc["name"]
+                                st.session_state.user_name = users_db[log_email]["name"]
                                 st.session_state.is_admin = False
                                 st.rerun()
                             elif user_status == "pending":
@@ -259,7 +293,6 @@ if not st.session_state.logged_in:
                         else:
                             st.error(t['login_err'])
                         
-        # تبويب إنشاء حساب جديد
         with tab2:
             with st.form("register_form"):
                 reg_name = st.text_input(t['name_label'])
@@ -269,9 +302,10 @@ if not st.session_state.logged_in:
                 btn_register = st.form_submit_button(t['register_btn'], use_container_width=True)
                 
                 if btn_register:
+                    users_db = load_users()
                     if reg_pass != reg_pass_conf:
                         st.error(t['reg_err_pass'])
-                    elif users_collection.find_one({"_id": reg_email}) or reg_email == ADMIN_EMAIL:
+                    elif reg_email in users_db or reg_email == ADMIN_EMAIL:
                         st.error(t['reg_err_exists'])
                     elif reg_email and reg_pass and reg_name:
                         save_user(reg_email, {
@@ -283,16 +317,13 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# --- الواجهة الرئيسية (بعد تسجيل الدخول) ---
+# --- الواجهة الرئيسية ---
 # ==========================================
-
-# --- لوحة تحكم الإدارة الشاملة (تظهر فقط للمدير) ---
 if st.session_state.is_admin:
     with st.sidebar:
         st.header(t['admin_title'])
         users_db = load_users()
         
-        # 1. الحسابات المعلقة
         st.subheader(t['admin_pending'])
         pending_users = {e: d for e, d in users_db.items() if d.get("status") == "pending"}
         if pending_users:
@@ -310,7 +341,6 @@ if st.session_state.is_admin:
         else:
             st.info(t['no_users'])
 
-        # 2. الحسابات النشطة
         st.subheader(t['admin_approved'])
         approved_users = {e: d for e, d in users_db.items() if d.get("status") == "approved"}
         if approved_users:
@@ -328,7 +358,6 @@ if st.session_state.is_admin:
         else:
             st.info(t['no_users'])
 
-        # 3. الحسابات الموقوفة
         st.subheader(t['admin_suspended'])
         suspended_users = {e: d for e, d in users_db.items() if d.get("status") == "suspended"}
         if suspended_users:
