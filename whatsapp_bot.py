@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import requests
 import os
-import google.generativeai as genai
+from google import genai # التعديل الأول: المكتبة الجديدة
 from tavily import TavilyClient
 
 app = Flask(__name__)
@@ -14,7 +14,8 @@ VERIFY_TOKEN = "DairyBot2026" # كلمة السر للربط مع ميتا
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 
-genai.configure(api_key=GEMINI_API_KEY)
+# التعديل الثاني: تهيئة عميل الاتصال
+client = genai.Client(api_key=GEMINI_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
 
 # --- نقطة الاتصال (Webhook) ---
@@ -72,10 +73,15 @@ def process_with_ai(query):
         سؤال المستخدم: {query}
         """
         
-        model = genai.GenerativeModel("models/gemini-1.5-pro-latest")
-        answer = model.generate_content(prompt)
-        return answer.text
+        # التعديل الثالث: استخدام الطريقة الجديدة لتوليد المحتوى
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text
     except Exception as e:
+        # طباعة الخطأ في سجلات السيرفر عشان لو حصلت مشكلة نقدر نتبعها
+        print(f"Error in process_with_ai: {e}")
         return "⚠️ عذراً، لم أتمكن من جلب الإجابة الآن. حاول مرة أخرى."
 
 def send_whatsapp_message(to, text):
