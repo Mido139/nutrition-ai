@@ -2,4 +2,5 @@ streamlit
 google-generativeai
 tavily-python
 pillow
-pymongo
+SQLAlchemy
+PyMySQL
