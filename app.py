@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from tavily import TavilyClient
 import os
 import hashlib
@@ -521,11 +521,10 @@ def process_query(query, img=None):
                 for index, result in enumerate(search_response.get("results", [])):
                     context += f"Source [{index + 1}]:\n- Title: {result['title']}\n- URL: {result['url']}\n- Info: {result['content']}\n\n"
                 
-                genai.configure(api_key=gemini_api_key)
-                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name]
+                # تهيئة العميل الجديد الخاص بـ google.genai
+                client = genai.Client(api_key=gemini_api_key)
                 
-                if available_models:
-                    prompt = f'''
+                prompt = f'''
                     أنت باحث أكاديمي خبير ومستشار متخصص *حصرياً* في تغذية، فسيولوجيا هضم، وإدارة الأبقار الحلوب (Dairy Cattle) فقط.
                     مهمتك هي تقديم إجابات علمية وبيولوجية دقيقة وشاملة من خلال الدمج بين مصدرين أساسيين:
                     أولاً: المرجع الأكاديمي الأساسي الدائم (Nutrient Requirements of Dairy Cattle - NASEM): https://www.ncbi.nlm.nih.gov/books/NBK600603/
@@ -545,32 +544,36 @@ def process_query(query, img=None):
                     الأبحاث والمصادر العلمية المتاحة من البحث الحي:
                     {context}
                     '''
+                
+                contents_to_send = [prompt]
+                if img:
+                    contents_to_send.append(img)
                     
-                    contents_to_send = [prompt]
-                    if img:
-                        contents_to_send.append(img)
-                        
-                    answer = None
-                    preferred_models = ["models/gemini-1.5-pro-latest", "models/gemini-pro"]
-                    models_to_try = preferred_models + [m for m in available_models if m not in preferred_models]
+                answer_text = None
+                
+                # قائمة الموديلات الحديثة المعتمدة في التحديث الجديد
+                models_to_try = ["gemini-2.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
 
-                    for model_name in models_to_try:
-                        try:
-                            model = genai.GenerativeModel(model_name)
-                            answer = model.generate_content(contents_to_send)
+                for model_name in models_to_try:
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=contents_to_send
+                        )
+                        if response and response.text:
+                            answer_text = response.text
                             break
-                        except Exception:
-                            continue
-                    
-                    if answer:
-                        st.markdown(answer.text)
-                        user_chats[st.session_state.current_chat]["messages"].append({"role": "assistant", "content": answer.text})
-                        user_chats[st.session_state.current_chat]["updated_at"] = now_str
-                        save_user_chats(user_email, user_chats)
-                    else:
-                        st.error(t['ai_err'])
+                    except Exception as e:
+                        print(f"Failed with model {model_name}: {e}")
+                        continue
+                
+                if answer_text:
+                    st.markdown(answer_text)
+                    user_chats[st.session_state.current_chat]["messages"].append({"role": "assistant", "content": answer_text})
+                    user_chats[st.session_state.current_chat]["updated_at"] = now_str
+                    save_user_chats(user_email, user_chats)
                 else:
-                    st.error(t['api_err'])
+                    st.error(t['ai_err'])
                     
             except Exception as e:
                 st.error(f"{t['sys_err']} {e}")
