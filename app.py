@@ -426,8 +426,8 @@ with st.sidebar:
     st.write("---")
 
 try:
-    gemini_api_key = os.environ.get("GEMINI_API_KEY") or st.secrets["GEMINI_API_KEY"]
-    tavily_api_key = os.environ.get("TAVILY_API_KEY") or st.secrets["TAVILY_API_KEY"]
+    gemini_api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+    tavily_api_key = os.environ.get("TAVILY_API_KEY") or st.secrets.get("TAVILY_API_KEY")
 except Exception:
     st.error(t['api_missing'])
     st.stop()
@@ -513,35 +513,33 @@ def process_query(query, img=None):
     with st.chat_message("assistant"):
         with st.spinner(t['loading']):
             try:
-                scientific_query = query + " AND (dairy cattle OR dairy cows OR الأبقار الحلوب) (بحث علمي OR دراسة أكاديمية OR journal OR pubmed OR sciencedirect OR ncbi)"
-                tavily_client = TavilyClient(api_key=tavily_api_key)
-                search_response = tavily_client.search(scientific_query, search_depth="advanced", max_results=8)
-                
+                # 1. إعداد البحث عبر Tavily
                 context = ""
-                for index, result in enumerate(search_response.get("results", [])):
-                    context += f"Source [{index + 1}]:\n- Title: {result['title']}\n- URL: {result['url']}\n- Info: {result['content']}\n\n"
+                if tavily_api_key:
+                    scientific_query = query + " AND (dairy cattle OR dairy cows OR الأبقار الحلوب)"
+                    tavily_client = TavilyClient(api_key=tavily_api_key)
+                    search_response = tavily_client.search(scientific_query, search_depth="advanced", max_results=3)
+                    for index, result in enumerate(search_response.get("results", [])):
+                        context += f"Source [{index + 1}]:\n- Title: {result.get('title', '')}\n- URL: {result.get('url', '')}\n- Info: {result.get('content', '')}\n\n"
                 
-                # تهيئة العميل الجديد الخاص بـ google.genai
+                # 2. إعداد الاتصال بموديل Gemini
                 client = genai.Client(api_key=gemini_api_key)
                 
                 prompt = f'''
                     أنت باحث أكاديمي خبير ومستشار متخصص *حصرياً* في تغذية، فسيولوجيا هضم، وإدارة الأبقار الحلوب (Dairy Cattle) فقط.
                     مهمتك هي تقديم إجابات علمية وبيولوجية دقيقة وشاملة من خلال الدمج بين مصدرين أساسيين:
-                    أولاً: المرجع الأكاديمي الأساسي الدائم (Nutrient Requirements of Dairy Cattle - NASEM): https://www.ncbi.nlm.nih.gov/books/NBK600603/
-                    ثانياً: "مجموعة الأبحاث والمصادر العلمية المتاحة من البحث الحي" المرفقة أدناه.
+                    أولاً: المرجع الأكاديمي الأساسي (NASEM).
+                    ثانياً: "مجموعة الأبحاث والمصادر العلمية" المرفقة أدناه.
                     
-                    التزم بالقوانين التالية بصرامة شديدة:
-                    1. التخصص الحصري: يُحظر عليك تماماً الإجابة على أي أسئلة تتعلق بحيوانات أخرى. إذا كان السؤال لا يخص الأبقار الحلوب، اعتذر بلباقة.
-                    2. تحليل الصور: إذا أرفق المستخدم صورة، قم بفحصها بعناية شديدة وقدم تقييماً علمياً دقيقاً بناءً على قواعد الأبقار الحلوب.
-                    3. الشمول والدقة: اجمع المعلومات من المرجع الثابت ومن الأبحاث الحية لتقديم إجابة متكاملة تخص الأبقار الحلوب.
-                    4. التوثيق الأكاديمي: يجب توثيق كل معلومة داخل النص [NASEM] أو [1].
-                    5. منع التأليف نهائياً: إذا لم تجد إجابة علمية دقيقة، قل بوضوح: "لا توفر المراجع الحالية بيانات علمية دقيقة للإجابة على هذا السؤال".
-                    6. قسم المراجع: في نهاية الإجابة، قم بعمل قسم "المراجع العلمية" واذكر فيها الروابط المعتمدة.
+                    التزم بالقوانين التالية:
+                    1. التخصص الحصري للأبقار الحلوب.
+                    2. تحليل الصور بدقة (إن وجدت).
+                    3. التوثيق الأكاديمي لكل معلومة.
                     {t['lang_rule']}
                     
                     سؤال المستخدم: {query}
                     
-                    الأبحاث والمصادر العلمية المتاحة من البحث الحي:
+                    الأبحاث والمصادر العلمية:
                     {context}
                     '''
                 
@@ -550,9 +548,10 @@ def process_query(query, img=None):
                     contents_to_send.append(img)
                     
                 answer_text = None
+                error_details = ""
                 
-                # قائمة الموديلات الحديثة المعتمدة في التحديث الجديد
-                models_to_try = ["gemini-2.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+                # استخدام الموديل المستقر
+                models_to_try = ["gemini-1.5-flash", "gemini-1.0-pro", "gemini-pro"]
 
                 for model_name in models_to_try:
                     try:
@@ -564,7 +563,7 @@ def process_query(query, img=None):
                             answer_text = response.text
                             break
                     except Exception as e:
-                        print(f"Failed with model {model_name}: {e}")
+                        error_details += f"[{model_name} failed: {str(e)}] "
                         continue
                 
                 if answer_text:
@@ -573,7 +572,7 @@ def process_query(query, img=None):
                     user_chats[st.session_state.current_chat]["updated_at"] = now_str
                     save_user_chats(user_email, user_chats)
                 else:
-                    st.error(t['ai_err'])
+                    st.error(f"{t['ai_err']} \nتفاصيل الخطأ: {error_details}")
                     
             except Exception as e:
                 st.error(f"{t['sys_err']} {e}")
