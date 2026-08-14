@@ -4,6 +4,7 @@ from tavily import TavilyClient
 import os
 import hashlib
 import datetime
+import time
 from PIL import Image
 from sqlalchemy import create_engine, Column, String, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -110,7 +111,7 @@ ui = {
         "upload_succ": "✅ تم إرفاق الصورة. اكتب سؤالك.",
         "chat_input": "اسأل عن الحميات، المكونات، أو ارفع صورة...",
         "img_caption": "الصورة المرفقة",
-        "lang_rule": "يجب أن ترد على المستخدم بنفس لغة سؤاله تماماً.",
+        "lang_rule": "7. تطابق اللغة (Language Matching): يجب أن ترد على المستخدم بنفس لغة سؤاله تماماً.",
         "delete_title": "إدارة المحادثات",
         "delete_current_chat": "🗑️ مسح هذه المحادثة",
         "delete_all_chats": "🗑️ مسح كل المحادثات"
@@ -168,7 +169,7 @@ ui = {
         "upload_succ": "✅ Image attached. Type your question.",
         "chat_input": "Ask about diets, ingredients...",
         "img_caption": "Attached Image",
-        "lang_rule": "You MUST respond in the exact same language as the user's query.",
+        "lang_rule": "7. Language Matching: You MUST respond in the exact same language as the user's query.",
         "delete_title": "Chat Management",
         "delete_current_chat": "🗑️ Delete This Chat",
         "delete_all_chats": "🗑️ Delete All Chats"
@@ -213,7 +214,6 @@ TIDB_URI = (
     os.environ.get("TIDB_URI")
     or st.secrets.get("TIDB_URI", "")
 )
-
 
 Base = declarative_base()
 
@@ -338,12 +338,14 @@ def load_users():
                 "password": u.password,
                 "status": u.status
             }
-
             for u in users
         }
 
 
-def save_user(email, data):
+def save_user(
+    email,
+    data
+):
 
     with Session() as session:
 
@@ -471,7 +473,6 @@ def load_user_chats(email):
 
             return processed_chats
 
-
         return {}
 
 
@@ -547,7 +548,7 @@ if not st.session_state.logged_in:
 
 
         # ======================================
-        # Login
+        # تسجيل الدخول
         # ======================================
 
         with tab1:
@@ -589,7 +590,6 @@ if not st.session_state.logged_in:
                         st.session_state.is_admin = True
 
                         st.rerun()
-
 
                     else:
 
@@ -634,7 +634,6 @@ if not st.session_state.logged_in:
                                     t["suspended_err"]
                                 )
 
-
                         else:
 
                             st.error(
@@ -643,7 +642,7 @@ if not st.session_state.logged_in:
 
 
         # ======================================
-        # Register
+        # إنشاء حساب
         # ======================================
 
         with tab2:
@@ -757,7 +756,6 @@ if st.session_state.is_admin:
                     f"👤 {p_data['name']} \n({p_email})"
                 )
 
-
                 c1, c2 = st.columns(2)
 
 
@@ -823,7 +821,6 @@ if st.session_state.is_admin:
                     f"🟢 {a_data['name']} \n({a_email})"
                 )
 
-
                 c1, c2 = st.columns(2)
 
 
@@ -888,7 +885,6 @@ if st.session_state.is_admin:
                 st.write(
                     f"🔴 {s_data['name']} \n({s_email})"
                 )
-
 
                 c1, c2 = st.columns(2)
 
@@ -965,7 +961,7 @@ if not user_chats:
 
 
 # ==========================================
-# الواجهة الرئيسية
+# الصفحة الرئيسية
 # ==========================================
 
 st.title(
@@ -1031,10 +1027,17 @@ if not gemini_api_key:
 
 
 # ==========================================
-# Gemini Model
+# Gemini Models
 # ==========================================
 
-GEMINI_MODEL = "gemini-3.6-flash"
+# الموديل الأساسي
+# ثم موديلات احتياطية في حالة الضغط أو عدم التوفر
+
+GEMINI_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash"
+]
 
 
 # ==========================================
@@ -1149,8 +1152,6 @@ with st.sidebar:
     )
 
 
-    # Delete current
-
     if st.button(
         t["delete_current_chat"],
         use_container_width=True
@@ -1192,8 +1193,6 @@ with st.sidebar:
         st.rerun()
 
 
-    # Delete all
-
     if st.button(
         t["delete_all_chats"],
         use_container_width=True
@@ -1223,7 +1222,7 @@ with st.sidebar:
 
 
 # ==========================================
-# عرض الرسائل
+# عرض المحادثة
 # ==========================================
 
 chat_data = user_chats[
@@ -1268,7 +1267,7 @@ for message in current_messages:
 
 
 # ==========================================
-# معالجة السؤال
+# دالة معالجة السؤال
 # ==========================================
 
 def process_query(
@@ -1320,7 +1319,7 @@ def process_query(
     )
 
 
-    # عرض سؤال المستخدم
+    # عرض السؤال
 
     with st.chat_message(
         "user"
@@ -1339,7 +1338,9 @@ def process_query(
             )
 
 
-    # رد الذكاء الاصطناعي
+    # ======================================
+    # AI
+    # ======================================
 
     with st.chat_message(
         "assistant"
@@ -1351,9 +1352,9 @@ def process_query(
 
             try:
 
-                # ======================================
+                # ==================================
                 # Tavily
-                # ======================================
+                # ==================================
 
                 context = ""
 
@@ -1363,8 +1364,7 @@ def process_query(
                     scientific_query = (
                         query
                         + " AND "
-                        "(dairy cattle OR dairy cows OR الأبقار الحلوب) "
-                        "(بحث علمي OR دراسة أكاديمية)"
+                        "(dairy cattle OR dairy cows OR الأبقار الحلوب)"
                     )
 
 
@@ -1395,14 +1395,18 @@ def process_query(
                         )
 
 
-                # ======================================
-                # Gemini
-                # ======================================
+                # ==================================
+                # Gemini Client
+                # ==================================
 
                 client = genai.Client(
                     api_key=gemini_api_key
                 )
 
+
+                # ==================================
+                # Prompt
+                # ==================================
 
                 prompt = f"""
 أنت باحث أكاديمي خبير ومستشار متخصص حصرياً في تغذية
@@ -1412,6 +1416,7 @@ def process_query(
 مهمتك تقديم إجابات علمية دقيقة وشاملة.
 
 اعتمد على:
+
 1. مبادئ NASEM في تغذية الأبقار الحلوب.
 2. الأبحاث والمصادر العلمية الموجودة في السياق.
 3. المعلومات العلمية الموثوقة.
@@ -1449,40 +1454,168 @@ def process_query(
                     )
 
 
-                # ======================================
-                # Gemini 3.6 Flash
-                # ======================================
+                # ==================================
+                # Gemini Fallback System
+                # ==================================
 
-                print(
-                    f"Sending request to Gemini model: "
-                    f"{GEMINI_MODEL}"
-                )
+                answer_text = None
+                error_details = []
 
 
-                response = client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=contents_to_send
-                )
+                for model_name in GEMINI_MODELS:
+
+                    # عدد المحاولات لكل موديل
+                    max_attempts = 2
 
 
-                # ======================================
-                # قراءة الإجابة
-                # ======================================
+                    for attempt in range(
+                        1,
+                        max_attempts + 1
+                    ):
 
-                if (
-                    response
-                    and response.text
-                ):
+                        try:
 
-                    answer_text = (
-                        response.text.strip()
-                    )
+                            print(
+                                f"Trying Gemini model: "
+                                f"{model_name} | "
+                                f"Attempt: {attempt}"
+                            )
 
 
-                    print(
-                        "Gemini response received successfully."
-                    )
+                            response = client.models.generate_content(
+                                model=model_name,
+                                contents=contents_to_send
+                            )
 
+
+                            if (
+                                response
+                                and response.text
+                            ):
+
+                                answer_text = (
+                                    response.text.strip()
+                                )
+
+
+                                print(
+                                    f"Gemini success with model: "
+                                    f"{model_name}"
+                                )
+
+
+                                break
+
+
+                        except Exception as e:
+
+                            error_text = str(e)
+
+
+                            print(
+                                f"Gemini model "
+                                f"{model_name} failed: "
+                                f"{error_text}"
+                            )
+
+
+                            error_details.append(
+                                f"{model_name}: {error_text}"
+                            )
+
+
+                            # ==================================
+                            # هل الخطأ مؤقت؟
+                            # ==================================
+
+                            temporary_error = (
+                                "503" in error_text
+                                or
+                                "UNAVAILABLE" in error_text
+                                or
+                                "high demand" in error_text.lower()
+                                or
+                                "overloaded" in error_text.lower()
+                                or
+                                "429" in error_text
+                                or
+                                "RESOURCE_EXHAUSTED" in error_text
+                            )
+
+
+                            if temporary_error:
+
+                                if attempt < max_attempts:
+
+                                    # انتظار قبل إعادة المحاولة
+                                    wait_seconds = (
+                                        2 * attempt
+                                    )
+
+                                    print(
+                                        f"Temporary Gemini error. "
+                                        f"Waiting {wait_seconds} seconds..."
+                                    )
+
+
+                                    time.sleep(
+                                        wait_seconds
+                                    )
+
+                                    continue
+
+                                else:
+
+                                    # انتقل للموديل التالي
+
+                                    print(
+                                        f"Switching from "
+                                        f"{model_name} "
+                                        f"to next model..."
+                                    )
+
+                                    break
+
+
+                            # ==================================
+                            # 404 = الموديل غير متاح
+                            # ==================================
+
+                            if (
+                                "404" in error_text
+                                or
+                                "NOT_FOUND" in error_text
+                            ):
+
+                                print(
+                                    f"Model {model_name} "
+                                    f"is not available. "
+                                    f"Trying next model."
+                                )
+
+                                break
+
+
+                            # ==================================
+                            # أي خطأ آخر
+                            # ==================================
+
+                            break
+
+
+                    # لو حصلنا على إجابة نخرج
+                    # من حلقة الموديلات
+
+                    if answer_text:
+
+                        break
+
+
+                # ==================================
+                # عرض الإجابة
+                # ==================================
+
+                if answer_text:
 
                     st.markdown(
                         answer_text
@@ -1512,15 +1645,37 @@ def process_query(
 
                 else:
 
-                    st.error(
-                        "⚠️ Gemini لم يُرجع إجابة."
+                    print(
+                        "All Gemini models failed."
                     )
+
+
+                    st.error(
+                        "⚠️ تعذر الحصول على إجابة من Gemini حالياً. "
+                        "تمت تجربة النماذج الاحتياطية."
+                    )
+
+
+                    # لا نظهر تفاصيل API للمستخدم
+                    # حتى لا تظهر أخطاء تقنية طويلة
+
+
+                    print(
+                        "Gemini errors:"
+                    )
+
+
+                    for error in error_details:
+
+                        print(
+                            error
+                        )
 
 
             except Exception as e:
 
                 print(
-                    f"Gemini/System Error: {e}"
+                    f"System error: {e}"
                 )
 
 
@@ -1537,7 +1692,9 @@ if len(current_messages) == 0:
 
     st.write("")
 
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns(
+        2
+    )
 
 
     with col2:
