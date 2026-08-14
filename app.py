@@ -8,12 +8,18 @@ from PIL import Image
 from sqlalchemy import create_engine, Column, String, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# ==========================================
-# --- إعداد واجهة الموقع ---
-# ==========================================
-st.set_page_config(page_title="Dairy Cattle AI | مساعد تغذية الأبقار", page_icon="🐄", layout="centered")
 
-st.markdown('''
+# ==========================================
+# إعداد واجهة الموقع
+# ==========================================
+
+st.set_page_config(
+    page_title="Dairy Cattle AI | مساعد تغذية الأبقار",
+    page_icon="🐄",
+    layout="centered"
+)
+
+st.markdown("""
 <style>
     div[data-testid="stButton"] button {
         border-radius: 20px;
@@ -24,23 +30,32 @@ st.markdown('''
         width: 100%;
         transition: all 0.3s;
     }
+
     div[data-testid="stButton"] button:hover {
         border-color: #4CAF50;
         color: #4CAF50;
         background-color: #f9f9f9;
     }
+
     .stFileUploader {
         padding-bottom: 0rem;
         margin-bottom: -1rem;
     }
+
     hr {
         margin: 0.5em 0;
     }
 </style>
-''', unsafe_allow_html=True)
+""", unsafe_allow_html=True)
+
+
+# ==========================================
+# اللغة
+# ==========================================
 
 if "lang" not in st.session_state:
     st.session_state.lang = "ar"
+
 
 ui = {
     "ar": {
@@ -95,11 +110,12 @@ ui = {
         "upload_succ": "✅ تم إرفاق الصورة. اكتب سؤالك.",
         "chat_input": "اسأل عن الحميات، المكونات، أو ارفع صورة...",
         "img_caption": "الصورة المرفقة",
-        "lang_rule": "7. تطابق اللغة (Language Matching): يجب أن ترد على المستخدم بنفس لغة سؤاله تماماً.",
+        "lang_rule": "يجب أن ترد على المستخدم بنفس لغة سؤاله تماماً.",
         "delete_title": "إدارة المحادثات",
         "delete_current_chat": "🗑️ مسح هذه المحادثة",
         "delete_all_chats": "🗑️ مسح كل المحادثات"
     },
+
     "en": {
         "auth_title": "🔐 Authentication Portal",
         "auth_sub": "Welcome to the Smart Dairy Cattle Management System",
@@ -152,7 +168,7 @@ ui = {
         "upload_succ": "✅ Image attached. Type your question.",
         "chat_input": "Ask about diets, ingredients...",
         "img_caption": "Attached Image",
-        "lang_rule": "7. Language Matching: You MUST respond in the exact same language as the user's query.",
+        "lang_rule": "You MUST respond in the exact same language as the user's query.",
         "delete_title": "Chat Management",
         "delete_current_chat": "🗑️ Delete This Chat",
         "delete_all_chats": "🗑️ Delete All Chats"
@@ -161,452 +177,1469 @@ ui = {
 
 t = ui[st.session_state.lang]
 
-with st.sidebar:
-    lang_button_label = "🌐 Switch to English" if st.session_state.lang == "ar" else "🌐 التبديل للعربية"
-    if st.button(lang_button_label, use_container_width=True):
-        st.session_state.lang = "en" if st.session_state.lang == "ar" else "ar"
-        st.rerun()
-    st.write("---")
 
 # ==========================================
-# --- الاتصال بقاعدة بيانات TiDB Serverless (SQL) ---
+# تغيير اللغة
 # ==========================================
-TIDB_URI = os.environ.get("TIDB_URI") or st.secrets.get("TIDB_URI", "")
+
+with st.sidebar:
+
+    lang_button_label = (
+        "🌐 Switch to English"
+        if st.session_state.lang == "ar"
+        else "🌐 التبديل للعربية"
+    )
+
+    if st.button(
+        lang_button_label,
+        use_container_width=True
+    ):
+        st.session_state.lang = (
+            "en"
+            if st.session_state.lang == "ar"
+            else "ar"
+        )
+
+        st.rerun()
+
+    st.write("---")
+
+
+# ==========================================
+# قاعدة البيانات
+# ==========================================
+
+TIDB_URI = (
+    os.environ.get("TIDB_URI")
+    or st.secrets.get("TIDB_URI", "")
+)
+
 
 Base = declarative_base()
 
+
 class User(Base):
-    __tablename__ = 'users'
-    email = Column(String(255), primary_key=True)
-    name = Column(String(255))
-    password = Column(String(255))
-    status = Column(String(50))
+
+    __tablename__ = "users"
+
+    email = Column(
+        String(255),
+        primary_key=True
+    )
+
+    name = Column(
+        String(255)
+    )
+
+    password = Column(
+        String(255)
+    )
+
+    status = Column(
+        String(50)
+    )
+
 
 class UserChats(Base):
-    __tablename__ = 'user_chats'
-    email = Column(String(255), primary_key=True)
-    chats = Column(JSON, default=dict)
+
+    __tablename__ = "user_chats"
+
+    email = Column(
+        String(255),
+        primary_key=True
+    )
+
+    chats = Column(
+        JSON,
+        default=dict
+    )
+
 
 @st.cache_resource
 def get_sessionmaker():
+
     if not TIDB_URI:
         return None
+
     try:
-        engine = create_engine(TIDB_URI, pool_recycle=3600, pool_pre_ping=True)
-        Base.metadata.create_all(engine)
-        return sessionmaker(bind=engine)
+
+        engine = create_engine(
+            TIDB_URI,
+            pool_recycle=3600,
+            pool_pre_ping=True
+        )
+
+        Base.metadata.create_all(
+            engine
+        )
+
+        return sessionmaker(
+            bind=engine
+        )
+
     except Exception as e:
-        st.error(f"⚠️ فشل الاتصال بقاعدة البيانات: {e}")
+
+        st.error(
+            f"⚠️ فشل الاتصال بقاعدة البيانات: {e}"
+        )
+
         return None
+
 
 Session = get_sessionmaker()
 
+
 if not Session:
-    st.error("⚠️ يرجى التأكد من إضافة رابط TIDB_URI في إعدادات البيئة.")
+
+    st.error(
+        "⚠️ يرجى التأكد من إضافة رابط TIDB_URI في إعدادات البيئة."
+    )
+
     st.stop()
 
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@cow.com")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "123456")
+
+# ==========================================
+# بيانات المدير
+# ==========================================
+
+ADMIN_EMAIL = os.environ.get(
+    "ADMIN_EMAIL",
+    "admin@cow.com"
+)
+
+ADMIN_PASSWORD = os.environ.get(
+    "ADMIN_PASSWORD",
+    "123456"
+)
+
+
+# ==========================================
+# وظائف الحسابات
+# ==========================================
 
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+
+    return hashlib.sha256(
+        password.encode()
+    ).hexdigest()
+
 
 def load_users():
+
     with Session() as session:
-        users = session.query(User).all()
-        return {u.email: {"name": u.name, "password": u.password, "status": u.status} for u in users}
+
+        users = session.query(
+            User
+        ).all()
+
+        return {
+            u.email: {
+                "name": u.name,
+                "password": u.password,
+                "status": u.status
+            }
+
+            for u in users
+        }
+
 
 def save_user(email, data):
+
     with Session() as session:
-        user = session.query(User).filter_by(email=email).first()
+
+        user = (
+            session.query(User)
+            .filter_by(email=email)
+            .first()
+        )
+
         if not user:
-            user = User(email=email)
+
+            user = User(
+                email=email
+            )
+
             session.add(user)
-        user.name = data.get("name")
-        user.password = data.get("password")
-        user.status = data.get("status")
+
+        user.name = data.get(
+            "name"
+        )
+
+        user.password = data.get(
+            "password"
+        )
+
+        user.status = data.get(
+            "status"
+        )
+
         session.commit()
+
 
 def delete_user(email):
+
     with Session() as session:
-        user = session.query(User).filter_by(email=email).first()
+
+        user = (
+            session.query(User)
+            .filter_by(email=email)
+            .first()
+        )
+
         if user:
+
             session.delete(user)
+
             session.commit()
 
+
 def load_user_chats(email):
+
     with Session() as session:
-        uc = session.query(UserChats).filter_by(email=email).first()
+
+        uc = (
+            session.query(UserChats)
+            .filter_by(email=email)
+            .first()
+        )
+
         if uc and uc.chats:
-            raw_chats = dict(uc.chats)
+
+            raw_chats = dict(
+                uc.chats
+            )
+
             processed_chats = {}
+
             changed = False
+
             now = datetime.datetime.now()
-            
+
+
             for c_name, c_data in raw_chats.items():
-                if isinstance(c_data, list):
-                    processed_chats[c_name] = {"updated_at": now.isoformat(), "messages": c_data}
+
+                if isinstance(
+                    c_data,
+                    list
+                ):
+
+                    processed_chats[c_name] = {
+                        "updated_at": now.isoformat(),
+                        "messages": c_data
+                    }
+
                     changed = True
-                elif isinstance(c_data, dict):
-                    updated_at_str = c_data.get("updated_at", now.isoformat())
+
+                elif isinstance(
+                    c_data,
+                    dict
+                ):
+
+                    updated_at_str = c_data.get(
+                        "updated_at",
+                        now.isoformat()
+                    )
+
                     try:
-                        updated_at = datetime.datetime.fromisoformat(updated_at_str)
+
+                        updated_at = datetime.datetime.fromisoformat(
+                            updated_at_str
+                        )
+
                     except ValueError:
+
                         updated_at = now
-                    
-                    if (now - updated_at).days > 30:
+
+
+                    if (
+                        now - updated_at
+                    ).days > 30:
+
                         changed = True
+
                     else:
+
                         processed_chats[c_name] = c_data
-            
+
+
             if changed:
+
                 uc.chats = processed_chats
+
                 session.commit()
+
+
             return processed_chats
+
+
         return {}
 
-def save_user_chats(email, chats_dict):
+
+def save_user_chats(
+    email,
+    chats_dict
+):
+
     with Session() as session:
-        uc = session.query(UserChats).filter_by(email=email).first()
+
+        uc = (
+            session.query(UserChats)
+            .filter_by(email=email)
+            .first()
+        )
+
         if not uc:
-            uc = UserChats(email=email, chats=chats_dict)
+
+            uc = UserChats(
+                email=email,
+                chats=chats_dict
+            )
+
             session.add(uc)
+
         else:
-            uc.chats = dict(chats_dict)
+
+            uc.chats = dict(
+                chats_dict
+            )
+
         session.commit()
 
+
 # ==========================================
-# --- نظام تسجيل الدخول وإنشاء الحساب ---
+# تسجيل الدخول
 # ==========================================
+
 if "logged_in" not in st.session_state:
+
     st.session_state.logged_in = False
     st.session_state.user_email = ""
     st.session_state.user_name = ""
     st.session_state.is_admin = False
 
+
 if not st.session_state.logged_in:
-    st.markdown(f"<h1 style='text-align: center;'>{t['auth_title']}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align: center;'>{t['auth_sub']}</p>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
+
+    st.markdown(
+        f"<h1 style='text-align: center;'>{t['auth_title']}</h1>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"<p style='text-align: center;'>{t['auth_sub']}</p>",
+        unsafe_allow_html=True
+    )
+
+
+    col1, col2, col3 = st.columns(
+        [1, 2, 1]
+    )
+
+
     with col2:
-        tab1, tab2 = st.tabs([t['tab_login'], t['tab_register']])
-        
+
+        tab1, tab2 = st.tabs(
+            [
+                t["tab_login"],
+                t["tab_register"]
+            ]
+        )
+
+
+        # ======================================
+        # Login
+        # ======================================
+
         with tab1:
-            with st.form("login_form"):
-                log_email = st.text_input(t['email_label'])
-                log_pass = st.text_input(t['pass_label'], type="password")
-                btn_login = st.form_submit_button(t['login_btn'], use_container_width=True)
-                
+
+            with st.form(
+                "login_form"
+            ):
+
+                log_email = st.text_input(
+                    t["email_label"]
+                )
+
+                log_pass = st.text_input(
+                    t["pass_label"],
+                    type="password"
+                )
+
+                btn_login = st.form_submit_button(
+                    t["login_btn"],
+                    use_container_width=True
+                )
+
+
                 if btn_login:
-                    hashed_pass = hash_password(log_pass)
-                    
-                    if log_email == ADMIN_EMAIL and log_pass == ADMIN_PASSWORD:
+
+                    hashed_pass = hash_password(
+                        log_pass
+                    )
+
+
+                    if (
+                        log_email == ADMIN_EMAIL
+                        and log_pass == ADMIN_PASSWORD
+                    ):
+
                         st.session_state.logged_in = True
                         st.session_state.user_email = log_email
                         st.session_state.user_name = "المدير (Admin)"
                         st.session_state.is_admin = True
+
                         st.rerun()
+
+
                     else:
+
                         users_db = load_users()
-                        if log_email in users_db and users_db[log_email]["password"] == hashed_pass:
-                            user_status = users_db[log_email].get("status")
+
+
+                        if (
+                            log_email in users_db
+                            and users_db[log_email]["password"] == hashed_pass
+                        ):
+
+                            user_status = users_db[
+                                log_email
+                            ].get(
+                                "status"
+                            )
+
+
                             if user_status == "approved":
+
                                 st.session_state.logged_in = True
                                 st.session_state.user_email = log_email
-                                st.session_state.user_name = users_db[log_email]["name"]
+                                st.session_state.user_name = users_db[
+                                    log_email
+                                ]["name"]
+
                                 st.session_state.is_admin = False
+
                                 st.rerun()
+
+
                             elif user_status == "pending":
-                                st.warning(t['pending_err'])
+
+                                st.warning(
+                                    t["pending_err"]
+                                )
+
+
                             elif user_status == "suspended":
-                                st.error(t['suspended_err'])
+
+                                st.error(
+                                    t["suspended_err"]
+                                )
+
+
                         else:
-                            st.error(t['login_err'])
-                        
+
+                            st.error(
+                                t["login_err"]
+                            )
+
+
+        # ======================================
+        # Register
+        # ======================================
+
         with tab2:
-            with st.form("register_form"):
-                reg_name = st.text_input(t['name_label'])
-                reg_email = st.text_input(t['email_label'])
-                reg_pass = st.text_input(t['pass_label'], type="password")
-                reg_pass_conf = st.text_input(t['pass_confirm_label'], type="password")
-                btn_register = st.form_submit_button(t['register_btn'], use_container_width=True)
-                
+
+            with st.form(
+                "register_form"
+            ):
+
+                reg_name = st.text_input(
+                    t["name_label"]
+                )
+
+                reg_email = st.text_input(
+                    t["email_label"]
+                )
+
+                reg_pass = st.text_input(
+                    t["pass_label"],
+                    type="password"
+                )
+
+                reg_pass_conf = st.text_input(
+                    t["pass_confirm_label"],
+                    type="password"
+                )
+
+                btn_register = st.form_submit_button(
+                    t["register_btn"],
+                    use_container_width=True
+                )
+
+
                 if btn_register:
+
                     users_db = load_users()
+
+
                     if reg_pass != reg_pass_conf:
-                        st.error(t['reg_err_pass'])
-                    elif reg_email in users_db or reg_email == ADMIN_EMAIL:
-                        st.error(t['reg_err_exists'])
-                    elif reg_email and reg_pass and reg_name:
-                        save_user(reg_email, {
-                            "name": reg_name,
-                            "password": hash_password(reg_pass),
-                            "status": "pending" 
-                        })
-                        st.success(t['reg_succ'])
+
+                        st.error(
+                            t["reg_err_pass"]
+                        )
+
+
+                    elif (
+                        reg_email in users_db
+                        or reg_email == ADMIN_EMAIL
+                    ):
+
+                        st.error(
+                            t["reg_err_exists"]
+                        )
+
+
+                    elif (
+                        reg_email
+                        and reg_pass
+                        and reg_name
+                    ):
+
+                        save_user(
+                            reg_email,
+                            {
+                                "name": reg_name,
+                                "password": hash_password(reg_pass),
+                                "status": "pending"
+                            }
+                        )
+
+                        st.success(
+                            t["reg_succ"]
+                        )
+
+
     st.stop()
 
+
 # ==========================================
-# --- الواجهة الرئيسية ---
+# لوحة الإدارة
 # ==========================================
+
 if st.session_state.is_admin:
+
     with st.sidebar:
-        st.header(t['admin_title'])
+
+        st.header(
+            t["admin_title"]
+        )
+
         users_db = load_users()
-        
-        st.subheader(t['admin_pending'])
-        pending_users = {e: d for e, d in users_db.items() if d.get("status") == "pending"}
+
+
+        # Pending
+
+        st.subheader(
+            t["admin_pending"]
+        )
+
+        pending_users = {
+            e: d
+            for e, d in users_db.items()
+            if d.get("status") == "pending"
+        }
+
+
         if pending_users:
+
             for p_email, p_data in pending_users.items():
-                st.write(f"👤 {p_data['name']} \n({p_email})")
+
+                st.write(
+                    f"👤 {p_data['name']} \n({p_email})"
+                )
+
+
                 c1, c2 = st.columns(2)
-                if c1.button(t['approve_btn'], key=f"app_{p_email}", use_container_width=True):
+
+
+                if c1.button(
+                    t["approve_btn"],
+                    key=f"app_{p_email}",
+                    use_container_width=True
+                ):
+
                     p_data["status"] = "approved"
-                    save_user(p_email, p_data)
-                    st.rerun()
-                if c2.button(t['delete_btn'], key=f"del_p_{p_email}", use_container_width=True):
-                    delete_user(p_email)
-                    st.rerun()
-                st.markdown("<hr>", unsafe_allow_html=True)
-        else:
-            st.info(t['no_users'])
 
-        st.subheader(t['admin_approved'])
-        approved_users = {e: d for e, d in users_db.items() if d.get("status") == "approved"}
+                    save_user(
+                        p_email,
+                        p_data
+                    )
+
+                    st.rerun()
+
+
+                if c2.button(
+                    t["delete_btn"],
+                    key=f"del_p_{p_email}",
+                    use_container_width=True
+                ):
+
+                    delete_user(
+                        p_email
+                    )
+
+                    st.rerun()
+
+
+                st.markdown(
+                    "<hr>",
+                    unsafe_allow_html=True
+                )
+
+        else:
+
+            st.info(
+                t["no_users"]
+            )
+
+
+        # Approved
+
+        st.subheader(
+            t["admin_approved"]
+        )
+
+        approved_users = {
+            e: d
+            for e, d in users_db.items()
+            if d.get("status") == "approved"
+        }
+
+
         if approved_users:
-            for a_email, a_data in approved_users.items():
-                st.write(f"🟢 {a_data['name']} \n({a_email})")
-                c1, c2 = st.columns(2)
-                if c1.button(t['suspend_btn'], key=f"sus_{a_email}", use_container_width=True):
-                    a_data["status"] = "suspended"
-                    save_user(a_email, a_data)
-                    st.rerun()
-                if c2.button(t['delete_btn'], key=f"del_a_{a_email}", use_container_width=True):
-                    delete_user(a_email)
-                    st.rerun()
-                st.markdown("<hr>", unsafe_allow_html=True)
-        else:
-            st.info(t['no_users'])
 
-        st.subheader(t['admin_suspended'])
-        suspended_users = {e: d for e, d in users_db.items() if d.get("status") == "suspended"}
-        if suspended_users:
-            for s_email, s_data in suspended_users.items():
-                st.write(f"🔴 {s_data['name']} \n({s_email})")
+            for a_email, a_data in approved_users.items():
+
+                st.write(
+                    f"🟢 {a_data['name']} \n({a_email})"
+                )
+
+
                 c1, c2 = st.columns(2)
-                if c1.button(t['reactivate_btn'], key=f"react_{s_email}", use_container_width=True):
-                    s_data["status"] = "approved"
-                    save_user(s_email, s_data)
+
+
+                if c1.button(
+                    t["suspend_btn"],
+                    key=f"sus_{a_email}",
+                    use_container_width=True
+                ):
+
+                    a_data["status"] = "suspended"
+
+                    save_user(
+                        a_email,
+                        a_data
+                    )
+
                     st.rerun()
-                if c2.button(t['delete_btn'], key=f"del_s_{s_email}", use_container_width=True):
-                    delete_user(s_email)
+
+
+                if c2.button(
+                    t["delete_btn"],
+                    key=f"del_a_{a_email}",
+                    use_container_width=True
+                ):
+
+                    delete_user(
+                        a_email
+                    )
+
                     st.rerun()
-                st.markdown("<hr>", unsafe_allow_html=True)
+
+
+                st.markdown(
+                    "<hr>",
+                    unsafe_allow_html=True
+                )
+
         else:
-            st.info(t['no_users'])
-            
+
+            st.info(
+                t["no_users"]
+            )
+
+
+        # Suspended
+
+        st.subheader(
+            t["admin_suspended"]
+        )
+
+        suspended_users = {
+            e: d
+            for e, d in users_db.items()
+            if d.get("status") == "suspended"
+        }
+
+
+        if suspended_users:
+
+            for s_email, s_data in suspended_users.items():
+
+                st.write(
+                    f"🔴 {s_data['name']} \n({s_email})"
+                )
+
+
+                c1, c2 = st.columns(2)
+
+
+                if c1.button(
+                    t["reactivate_btn"],
+                    key=f"react_{s_email}",
+                    use_container_width=True
+                ):
+
+                    s_data["status"] = "approved"
+
+                    save_user(
+                        s_email,
+                        s_data
+                    )
+
+                    st.rerun()
+
+
+                if c2.button(
+                    t["delete_btn"],
+                    key=f"del_s_{s_email}",
+                    use_container_width=True
+                ):
+
+                    delete_user(
+                        s_email
+                    )
+
+                    st.rerun()
+
+
+                st.markdown(
+                    "<hr>",
+                    unsafe_allow_html=True
+                )
+
+        else:
+
+            st.info(
+                t["no_users"]
+            )
+
         st.write("---")
 
+
+# ==========================================
+# بيانات المستخدم
+# ==========================================
+
 user_email = st.session_state.user_email
-user_chats = load_user_chats(user_email)
+
+user_chats = load_user_chats(
+    user_email
+)
+
 
 if not user_chats:
-    now_str = datetime.datetime.now().isoformat()
-    user_chats = {f"{t['chat_prefix']} 1": {"updated_at": now_str, "messages": []}}
-    save_user_chats(user_email, user_chats)
 
-st.title(t['main_title'])
-st.write(f"👋 أهلاً بك، **{st.session_state.user_name}**! {t['main_desc']}")
+    now_str = datetime.datetime.now().isoformat()
+
+    user_chats = {
+        f"{t['chat_prefix']} 1": {
+            "updated_at": now_str,
+            "messages": []
+        }
+    }
+
+    save_user_chats(
+        user_email,
+        user_chats
+    )
+
+
+# ==========================================
+# الواجهة الرئيسية
+# ==========================================
+
+st.title(
+    t["main_title"]
+)
+
+st.write(
+    f"👋 أهلاً بك، **{st.session_state.user_name}**! "
+    f"{t['main_desc']}"
+)
+
 
 with st.sidebar:
-    if st.button(t['logout_btn'], use_container_width=True):
+
+    if st.button(
+        t["logout_btn"],
+        use_container_width=True
+    ):
+
         st.session_state.logged_in = False
+
         st.rerun()
+
     st.write("---")
+
+
+# ==========================================
+# API Keys
+# ==========================================
 
 try:
-    gemini_api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
-    tavily_api_key = os.environ.get("TAVILY_API_KEY") or st.secrets.get("TAVILY_API_KEY")
+
+    gemini_api_key = (
+        os.environ.get("GEMINI_API_KEY")
+        or st.secrets.get(
+            "GEMINI_API_KEY"
+        )
+    )
+
+    tavily_api_key = (
+        os.environ.get("TAVILY_API_KEY")
+        or st.secrets.get(
+            "TAVILY_API_KEY"
+        )
+    )
+
 except Exception:
-    st.error(t['api_missing'])
+
+    st.error(
+        t["api_missing"]
+    )
+
     st.stop()
 
-if "current_chat" not in st.session_state or st.session_state.current_chat not in user_chats:
-    st.session_state.current_chat = list(user_chats.keys())[-1] if user_chats else f"{t['chat_prefix']} 1"
+
+if not gemini_api_key:
+
+    st.error(
+        "⚠️ GEMINI_API_KEY غير موجود في إعدادات البيئة."
+    )
+
+    st.stop()
+
+
+# ==========================================
+# Gemini Model
+# ==========================================
+
+GEMINI_MODEL = "gemini-3.6-flash"
+
+
+# ==========================================
+# Current Chat
+# ==========================================
+
+if (
+    "current_chat" not in st.session_state
+    or st.session_state.current_chat not in user_chats
+):
+
+    st.session_state.current_chat = (
+        list(user_chats.keys())[-1]
+        if user_chats
+        else f"{t['chat_prefix']} 1"
+    )
+
 
 if "chat_counter" not in st.session_state:
-    st.session_state.chat_counter = len(user_chats) if user_chats else 1
+
+    st.session_state.chat_counter = (
+        len(user_chats)
+        if user_chats
+        else 1
+    )
+
+
+# ==========================================
+# Chat Sidebar
+# ==========================================
 
 with st.sidebar:
-    st.header(t['sidebar_title'])
-    
-    if st.button(t['new_chat'], use_container_width=True):
+
+    st.header(
+        t["sidebar_title"]
+    )
+
+
+    if st.button(
+        t["new_chat"],
+        use_container_width=True
+    ):
+
         st.session_state.chat_counter += 1
-        new_chat_name = f"{t['chat_prefix']} {st.session_state.chat_counter}"
+
+        new_chat_name = (
+            f"{t['chat_prefix']} "
+            f"{st.session_state.chat_counter}"
+        )
+
         now_str = datetime.datetime.now().isoformat()
-        user_chats[new_chat_name] = {"updated_at": now_str, "messages": []}
-        save_user_chats(user_email, user_chats)
-        st.session_state.current_chat = new_chat_name
+
+        user_chats[new_chat_name] = {
+            "updated_at": now_str,
+            "messages": []
+        }
+
+        save_user_chats(
+            user_email,
+            user_chats
+        )
+
+        st.session_state.current_chat = (
+            new_chat_name
+        )
+
         st.rerun()
-        
+
+
     st.write("---")
-    st.write(t['your_chats'])
-    
-    for chat_name in list(user_chats.keys()):
-        if chat_name == st.session_state.current_chat:
-            st.button(f"🟢 {chat_name}", key=f"btn_{chat_name}", disabled=True, use_container_width=True)
+
+    st.write(
+        t["your_chats"]
+    )
+
+
+    for chat_name in list(
+        user_chats.keys()
+    ):
+
+        if (
+            chat_name
+            == st.session_state.current_chat
+        ):
+
+            st.button(
+                f"🟢 {chat_name}",
+                key=f"btn_{chat_name}",
+                disabled=True,
+                use_container_width=True
+            )
+
         else:
-            if st.button(f"⚪ {chat_name}", key=f"btn_{chat_name}", use_container_width=True):
-                st.session_state.current_chat = chat_name
+
+            if st.button(
+                f"⚪ {chat_name}",
+                key=f"btn_{chat_name}",
+                use_container_width=True
+            ):
+
+                st.session_state.current_chat = (
+                    chat_name
+                )
+
                 st.rerun()
-                
+
+
     st.write("---")
-    st.markdown(f"**⚙️ {t.get('delete_title', 'إدارة المحادثات')}**")
-    
-    if st.button(t['delete_current_chat'], use_container_width=True):
+
+    st.markdown(
+        f"**⚙️ {t.get('delete_title', 'إدارة المحادثات')}**"
+    )
+
+
+    # Delete current
+
+    if st.button(
+        t["delete_current_chat"],
+        use_container_width=True
+    ):
+
         if len(user_chats) > 1:
-            del user_chats[st.session_state.current_chat]
-            st.session_state.current_chat = list(user_chats.keys())[-1]
+
+            del user_chats[
+                st.session_state.current_chat
+            ]
+
+            st.session_state.current_chat = (
+                list(user_chats.keys())[-1]
+            )
+
         else:
+
             now_str = datetime.datetime.now().isoformat()
-            user_chats = {f"{t['chat_prefix']} 1": {"updated_at": now_str, "messages": []}}
-            st.session_state.current_chat = f"{t['chat_prefix']} 1"
+
+            user_chats = {
+                f"{t['chat_prefix']} 1": {
+                    "updated_at": now_str,
+                    "messages": []
+                }
+            }
+
+            st.session_state.current_chat = (
+                f"{t['chat_prefix']} 1"
+            )
+
             st.session_state.chat_counter = 1
-        save_user_chats(user_email, user_chats)
+
+
+        save_user_chats(
+            user_email,
+            user_chats
+        )
+
         st.rerun()
 
-    if st.button(t['delete_all_chats'], use_container_width=True):
+
+    # Delete all
+
+    if st.button(
+        t["delete_all_chats"],
+        use_container_width=True
+    ):
+
         now_str = datetime.datetime.now().isoformat()
-        user_chats = {f"{t['chat_prefix']} 1": {"updated_at": now_str, "messages": []}}
-        st.session_state.current_chat = f"{t['chat_prefix']} 1"
+
+        user_chats = {
+            f"{t['chat_prefix']} 1": {
+                "updated_at": now_str,
+                "messages": []
+            }
+        }
+
+        st.session_state.current_chat = (
+            f"{t['chat_prefix']} 1"
+        )
+
         st.session_state.chat_counter = 1
-        save_user_chats(user_email, user_chats)
+
+        save_user_chats(
+            user_email,
+            user_chats
+        )
+
         st.rerun()
 
-chat_data = user_chats[st.session_state.current_chat]
-if isinstance(chat_data, list):
+
+# ==========================================
+# عرض الرسائل
+# ==========================================
+
+chat_data = user_chats[
+    st.session_state.current_chat
+]
+
+
+if isinstance(
+    chat_data,
+    list
+):
+
     current_messages = chat_data
+
 else:
-    current_messages = chat_data.get("messages", [])
+
+    current_messages = chat_data.get(
+        "messages",
+        []
+    )
+
 
 for message in current_messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if "image" in message and message["image"] is not None:
-            st.image(message["image"], use_container_width=True)
 
-def process_query(query, img=None):
+    with st.chat_message(
+        message["role"]
+    ):
+
+        st.markdown(
+            message["content"]
+        )
+
+        if (
+            "image" in message
+            and message["image"] is not None
+        ):
+
+            st.image(
+                message["image"],
+                use_container_width=True
+            )
+
+
+# ==========================================
+# معالجة السؤال
+# ==========================================
+
+def process_query(
+    query,
+    img=None
+):
+
     now_str = datetime.datetime.now().isoformat()
-    if isinstance(user_chats[st.session_state.current_chat], list):
-        user_chats[st.session_state.current_chat] = {"updated_at": now_str, "messages": user_chats[st.session_state.current_chat]}
-    
-    user_chats[st.session_state.current_chat]["messages"].append({"role": "user", "content": query, "image": img})
-    user_chats[st.session_state.current_chat]["updated_at"] = now_str
-    save_user_chats(user_email, user_chats)
-    
-    with st.chat_message("user"):
-        st.markdown(query)
+
+
+    if isinstance(
+        user_chats[
+            st.session_state.current_chat
+        ],
+        list
+    ):
+
+        user_chats[
+            st.session_state.current_chat
+        ] = {
+            "updated_at": now_str,
+            "messages": user_chats[
+                st.session_state.current_chat
+            ]
+        }
+
+
+    # حفظ سؤال المستخدم
+
+    user_chats[
+        st.session_state.current_chat
+    ]["messages"].append(
+        {
+            "role": "user",
+            "content": query,
+            "image": img
+        }
+    )
+
+
+    user_chats[
+        st.session_state.current_chat
+    ]["updated_at"] = now_str
+
+
+    save_user_chats(
+        user_email,
+        user_chats
+    )
+
+
+    # عرض سؤال المستخدم
+
+    with st.chat_message(
+        "user"
+    ):
+
+        st.markdown(
+            query
+        )
+
         if img:
-            st.image(img, caption=t['img_caption'], use_container_width=True)
 
-    with st.chat_message("assistant"):
-        with st.spinner(t['loading']):
+            st.image(
+                img,
+                caption=t["img_caption"],
+                use_container_width=True
+            )
+
+
+    # رد الذكاء الاصطناعي
+
+    with st.chat_message(
+        "assistant"
+    ):
+
+        with st.spinner(
+            t["loading"]
+        ):
+
             try:
-                # 1. إعداد البحث عبر Tavily
-                context = ""
-                if tavily_api_key:
-                    scientific_query = query + " AND (dairy cattle OR dairy cows OR الأبقار الحلوب)"
-                    tavily_client = TavilyClient(api_key=tavily_api_key)
-                    search_response = tavily_client.search(scientific_query, search_depth="advanced", max_results=3)
-                    for index, result in enumerate(search_response.get("results", [])):
-                        context += f"Source [{index + 1}]:\n- Title: {result.get('title', '')}\n- URL: {result.get('url', '')}\n- Info: {result.get('content', '')}\n\n"
-                
-                # 2. إعداد الاتصال بموديل Gemini
-                client = genai.Client(api_key=gemini_api_key)
-                
-                prompt = f'''
-                    أنت باحث أكاديمي خبير ومستشار متخصص *حصرياً* في تغذية، فسيولوجيا هضم، وإدارة الأبقار الحلوب (Dairy Cattle) فقط.
-                    مهمتك هي تقديم إجابات علمية وبيولوجية دقيقة وشاملة من خلال الدمج بين مصدرين أساسيين:
-                    أولاً: المرجع الأكاديمي الأساسي (NASEM).
-                    ثانياً: "مجموعة الأبحاث والمصادر العلمية" المرفقة أدناه.
-                    
-                    التزم بالقوانين التالية:
-                    1. التخصص الحصري للأبقار الحلوب.
-                    2. تحليل الصور بدقة (إن وجدت).
-                    3. التوثيق الأكاديمي لكل معلومة.
-                    {t['lang_rule']}
-                    
-                    سؤال المستخدم: {query}
-                    
-                    الأبحاث والمصادر العلمية:
-                    {context}
-                    '''
-                
-                contents_to_send = [prompt]
-                if img:
-                    contents_to_send.append(img)
-                    
-                answer_text = None
-                error_details = ""
-                
-                # استخدام الموديل المستقر
-                models_to_try = ["gemini-1.5-flash", "gemini-1.0-pro", "gemini-pro"]
 
-                for model_name in models_to_try:
-                    try:
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=contents_to_send
+                # ======================================
+                # Tavily
+                # ======================================
+
+                context = ""
+
+
+                if tavily_api_key:
+
+                    scientific_query = (
+                        query
+                        + " AND "
+                        "(dairy cattle OR dairy cows OR الأبقار الحلوب) "
+                        "(بحث علمي OR دراسة أكاديمية)"
+                    )
+
+
+                    tavily_client = TavilyClient(
+                        api_key=tavily_api_key
+                    )
+
+
+                    search_response = tavily_client.search(
+                        scientific_query,
+                        search_depth="advanced",
+                        max_results=3
+                    )
+
+
+                    for index, result in enumerate(
+                        search_response.get(
+                            "results",
+                            []
                         )
-                        if response and response.text:
-                            answer_text = response.text
-                            break
-                    except Exception as e:
-                        error_details += f"[{model_name} failed: {str(e)}] "
-                        continue
-                
-                if answer_text:
-                    st.markdown(answer_text)
-                    user_chats[st.session_state.current_chat]["messages"].append({"role": "assistant", "content": answer_text})
-                    user_chats[st.session_state.current_chat]["updated_at"] = now_str
-                    save_user_chats(user_email, user_chats)
+                    ):
+
+                        context += (
+                            f"Source [{index + 1}]:\n"
+                            f"- Title: {result.get('title', '')}\n"
+                            f"- URL: {result.get('url', '')}\n"
+                            f"- Info: {result.get('content', '')}\n\n"
+                        )
+
+
+                # ======================================
+                # Gemini
+                # ======================================
+
+                client = genai.Client(
+                    api_key=gemini_api_key
+                )
+
+
+                prompt = f"""
+أنت باحث أكاديمي خبير ومستشار متخصص حصرياً في تغذية
+وفسيولوجيا هضم وإدارة الأبقار الحلوب
+(Dairy Cattle Nutrition and Management).
+
+مهمتك تقديم إجابات علمية دقيقة وشاملة.
+
+اعتمد على:
+1. مبادئ NASEM في تغذية الأبقار الحلوب.
+2. الأبحاث والمصادر العلمية الموجودة في السياق.
+3. المعلومات العلمية الموثوقة.
+
+القواعد:
+
+1. تخصصك الأساسي هو الأبقار الحلوب.
+2. إذا أرسل المستخدم صورة، قم بتحليلها بدقة.
+3. لا تخترع أرقاماً أو مراجع.
+4. إذا كانت المعلومة غير مؤكدة، وضح ذلك.
+5. عند الحاجة، اذكر المصادر أو عناوين الدراسات الموجودة في السياق.
+6. اجعل الإجابة عملية ومفهومة.
+7. يجب أن ترد على المستخدم بنفس لغة سؤاله تماماً.
+
+سؤال المستخدم:
+
+{query}
+
+
+الأبحاث والمصادر العلمية:
+
+{context}
+"""
+
+
+                contents_to_send = [
+                    prompt
+                ]
+
+
+                if img:
+
+                    contents_to_send.append(
+                        img
+                    )
+
+
+                # ======================================
+                # Gemini 3.6 Flash
+                # ======================================
+
+                print(
+                    f"Sending request to Gemini model: "
+                    f"{GEMINI_MODEL}"
+                )
+
+
+                response = client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=contents_to_send
+                )
+
+
+                # ======================================
+                # قراءة الإجابة
+                # ======================================
+
+                if (
+                    response
+                    and response.text
+                ):
+
+                    answer_text = (
+                        response.text.strip()
+                    )
+
+
+                    print(
+                        "Gemini response received successfully."
+                    )
+
+
+                    st.markdown(
+                        answer_text
+                    )
+
+
+                    user_chats[
+                        st.session_state.current_chat
+                    ]["messages"].append(
+                        {
+                            "role": "assistant",
+                            "content": answer_text
+                        }
+                    )
+
+
+                    user_chats[
+                        st.session_state.current_chat
+                    ]["updated_at"] = now_str
+
+
+                    save_user_chats(
+                        user_email,
+                        user_chats
+                    )
+
+
                 else:
-                    st.error(f"{t['ai_err']} \nتفاصيل الخطأ: {error_details}")
-                    
+
+                    st.error(
+                        "⚠️ Gemini لم يُرجع إجابة."
+                    )
+
+
             except Exception as e:
-                st.error(f"{t['sys_err']} {e}")
+
+                print(
+                    f"Gemini/System Error: {e}"
+                )
+
+
+                st.error(
+                    f"{t['sys_err']} {e}"
+                )
+
+
+# ==========================================
+# الاقتراحات
+# ==========================================
 
 if len(current_messages) == 0:
-    st.write("") 
-    col1, col2 = st.columns(2)
-    
-    with col2:
-        if st.button(t['sugg_1_btn']):
-            process_query(t['sugg_1_q'])
-        if st.button(t['sugg_2_btn']):
-            process_query(t['sugg_2_q'])
-            
-    with col1:
-        if st.button(t['sugg_3_btn']):
-            process_query(t['sugg_3_q'])
-        if st.button(t['sugg_4_btn']):
-            process_query(t['sugg_4_q'])
 
-    col3, col4, col5 = st.columns([1, 2, 1])
+    st.write("")
+
+    col1, col2 = st.columns(2)
+
+
+    with col2:
+
+        if st.button(
+            t["sugg_1_btn"]
+        ):
+
+            process_query(
+                t["sugg_1_q"]
+            )
+
+
+        if st.button(
+            t["sugg_2_btn"]
+        ):
+
+            process_query(
+                t["sugg_2_q"]
+            )
+
+
+    with col1:
+
+        if st.button(
+            t["sugg_3_btn"]
+        ):
+
+            process_query(
+                t["sugg_3_q"]
+            )
+
+
+        if st.button(
+            t["sugg_4_btn"]
+        ):
+
+            process_query(
+                t["sugg_4_q"]
+            )
+
+
+    col3, col4, col5 = st.columns(
+        [1, 2, 1]
+    )
+
+
     with col4:
-        if st.button(t['sugg_5_btn']):
-            process_query(t['sugg_5_q'])
+
+        if st.button(
+            t["sugg_5_btn"]
+        ):
+
+            process_query(
+                t["sugg_5_q"]
+            )
+
+
+# ==========================================
+# رفع صورة
+# ==========================================
 
 st.write("---")
-uploaded_file = st.file_uploader(t['upload_lbl'], type=["jpg", "jpeg", "png"])
+
+
+uploaded_file = st.file_uploader(
+    t["upload_lbl"],
+    type=[
+        "jpg",
+        "jpeg",
+        "png"
+    ]
+)
+
 
 if uploaded_file:
-    img_to_analyze = Image.open(uploaded_file)
-    st.success(t['upload_succ'])
+
+    img_to_analyze = Image.open(
+        uploaded_file
+    )
+
+    st.success(
+        t["upload_succ"]
+    )
+
 else:
+
     img_to_analyze = None
 
-user_input = st.chat_input(t['chat_input'])
+
+# ==========================================
+# Chat Input
+# ==========================================
+
+user_input = st.chat_input(
+    t["chat_input"]
+)
+
+
 if user_input:
-    process_query(user_input, img=img_to_analyze)
+
+    process_query(
+        user_input,
+        img=img_to_analyze
+    )
