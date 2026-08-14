@@ -1,7 +1,6 @@
 from flask import Flask, request
 import requests
 import os
-from google import genai
 from tavily import TavilyClient
 
 app = Flask(__name__)
@@ -12,18 +11,11 @@ app = Flask(__name__)
 
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
-
-VERIFY_TOKEN = os.environ.get(
-    "VERIFY_TOKEN",
-    "DairyBot2026"
-)
-
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "DairyBot2026")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 
-# إصدار WhatsApp Graph API
 WHATSAPP_API_VERSION = "v26.0"
-
 
 # =========================================================
 # التحقق من إعدادات البيئة
@@ -31,30 +23,20 @@ WHATSAPP_API_VERSION = "v26.0"
 
 if not WHATSAPP_TOKEN:
     print("WARNING: WHATSAPP_TOKEN is missing")
-
 if not PHONE_NUMBER_ID:
     print("WARNING: PHONE_NUMBER_ID is missing")
-
 if not GEMINI_API_KEY:
     print("WARNING: GEMINI_API_KEY is missing")
-
 if not TAVILY_API_KEY:
     print("WARNING: TAVILY_API_KEY is missing")
 
-
 # =========================================================
-# تهيئة Gemini و Tavily
+# تهيئة Tavily فقط
 # =========================================================
 
-client = None
 tavily_client = None
-
-if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-
 if TAVILY_API_KEY:
     tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
-
 
 # =========================================================
 # Webhook
@@ -62,50 +44,22 @@ if TAVILY_API_KEY:
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-
-    # -----------------------------------------------------
-    # 1. Meta Webhook Verification
-    # -----------------------------------------------------
-
     if request.method == "GET":
-
         mode = request.args.get("hub.mode")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
 
-        print(
-            f"Webhook verification request: "
-            f"mode={mode}, token_received={bool(token)}"
-        )
-
         if mode == "subscribe" and token == VERIFY_TOKEN:
-            print("Webhook verification successful")
             return challenge, 200
-
-        print("Webhook verification failed")
         return "Forbidden", 403
 
-
-    # -----------------------------------------------------
-    # 2. استقبال رسائل WhatsApp
-    # -----------------------------------------------------
-
     if request.method == "POST":
-
         try:
             body = request.get_json(silent=True)
-
-            print("======================================")
-            print("WhatsApp Webhook received")
-            print("======================================")
-
             if not body or body.get("object") != "whatsapp_business_account":
                 return "EVENT_RECEIVED", 200
 
             entries = body.get("entry", [])
-            if not entries:
-                return "EVENT_RECEIVED", 200
-
             for entry in entries:
                 changes = entry.get("changes", [])
                 for change in changes:
@@ -127,15 +81,13 @@ def webhook():
                                 )
                             continue
 
-                        text_data = message_data.get("text", {})
-                        msg_text = text_data.get("body", "").strip()
-
+                        msg_text = message_data.get("text", {}).get("body", "").strip()
                         if not msg_text:
                             continue
 
                         print(f"User message: {msg_text}")
 
-                        # إرسال رسالة جاري التفكير
+                        # رسالة مؤقتة
                         send_whatsapp_message(
                             sender_phone,
                             "⏳ جاري تحليل سؤالك والبحث في المراجع العلمية..."
@@ -153,43 +105,30 @@ def webhook():
             print(f"ERROR processing webhook: {e}")
             return "EVENT_RECEIVED", 200
 
-
 # =========================================================
-# معالجة السؤال باستخدام Tavily + Gemini
+# معالجة السؤال (Tavily + Direct Gemini API)
 # =========================================================
 
 def process_with_ai(query):
-
     try:
         print("Starting AI processing...")
 
-        # -------------------------------------------------
-        # البحث العلمي (Tavily)
-        # -------------------------------------------------
+        # 1. البحث العلمي
         context = ""
         if tavily_client:
             scientific_query = query + " AND (dairy cattle OR dairy cows OR الأبقار الحلوب) (بحث علمي OR دراسة أكاديمية)"
-            print(f"Tavily query: {scientific_query}")
-            
             search_response = tavily_client.search(
                 scientific_query,
                 search_depth="advanced",
                 max_results=3
             )
-            
             results = search_response.get("results", [])
-            print(f"Tavily returned {len(results)} results")
-
             for index, result in enumerate(results):
                 context += f"Source [{index + 1}]\nTitle: {result.get('title', '')}\nURL: {result.get('url', '')}\nInformation: {result.get('content', '')}\n\n"
         else:
-            print("TAVILY_API_KEY is missing")
             context = "No external scientific search was available."
 
-
-        # -------------------------------------------------
-        # تجهيز السؤال (Prompt)
-        # -------------------------------------------------
+        # 2. تجهيز الـ Prompt
         prompt = f"""
 أنت مستشار خبير في تغذية وإدارة الأبقار الحلوب
 (Dairy Cattle Nutrition and Management).
@@ -210,53 +149,40 @@ def process_with_ai(query):
 سؤال المستخدم:
 {query}
 
-قدم إجابة منظمة ومختصرة نسبيًا، ويمكن استخدام
-النقاط والجداول البسيطة عند الحاجة.
+قدم إجابة منظمة ومختصرة نسبيًا، ويمكن استخدام النقاط والجداول البسيطة.
 """
 
-        # -------------------------------------------------
-        # الذكاء الاصطناعي (Gemini - الذكي متعدد النماذج)
-        # -------------------------------------------------
-        if not client:
+        # 3. الاتصال المباشر بـ Gemini عبر REST API (تخطي مشاكل المكتبة)
+        if not GEMINI_API_KEY:
             return "⚠️ مفتاح Gemini غير موجود في إعدادات Render."
 
-        # قائمة الموديلات اللي هنجربها بالترتيب لحد ما واحد فيهم ينجح
-        models_to_try = [
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
-            "gemini-1.0-pro",
-            "gemini-pro"
-        ]
+        # نستخدم أحدث موديل مستقر من خلال الرابط المباشر
+        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}]
+        }
 
-        answer = None
+        print("Sending Direct HTTP Request to Gemini API...")
+        response = requests.post(gemini_url, headers=headers, json=payload, timeout=30)
         
-        for model_name in models_to_try:
-            try:
-                print(f"Trying Gemini model: {model_name}")
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt
-                )
-                if response and response.text:
-                    answer = response.text.strip()
-                    print(f"Success! Model {model_name} answered.")
-                    break
-            except Exception as e:
-                print(f"Model {model_name} failed: {e}")
-                continue
-
-        if answer:
-            return answer
+        if response.ok:
+            data = response.json()
+            answer = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            if answer:
+                print("Gemini response received successfully via HTTP.")
+                return answer.strip()
+            else:
+                return "⚠️ الذكاء الاصطناعي لم يرجع إجابة نصية صالحة."
         else:
-            print("All Gemini models failed.")
-            return "⚠️ عذرًا، جميع خوادم الذكاء الاصطناعي ترفض الاتصال حالياً. تأكد من صلاحيات مفتاح API."
+            print(f"Gemini API Direct Error: {response.status_code} - {response.text}")
+            return "⚠️ عذرًا، تم رفض الطلب من خادم الذكاء الاصطناعي. تأكد من صحة مفتاح API الخاص بك."
 
     except Exception as e:
         print("======================================")
         print(f"Error in process_with_ai: {e}")
         print("======================================")
-        return "⚠️ عذرًا، حدث خطأ أثناء معالجة السؤال. حاول مرة أخرى بعد قليل."
-
+        return "⚠️ عذرًا، حدث خطأ داخلي أثناء معالجة السؤال. حاول مرة أخرى بعد قليل."
 
 # =========================================================
 # إرسال رسالة WhatsApp
@@ -265,16 +191,13 @@ def process_with_ai(query):
 def send_whatsapp_message(to, text):
     try:
         if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
-            print("WhatsApp credentials missing.")
             return False
 
         url = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{PHONE_NUMBER_ID}/messages"
-        
         headers = {
             "Authorization": f"Bearer {WHATSAPP_TOKEN}",
             "Content-Type": "application/json"
         }
-        
         data = {
             "messaging_product": "whatsapp",
             "to": to,
@@ -282,29 +205,20 @@ def send_whatsapp_message(to, text):
             "text": {"body": text}
         }
         
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        print(f"WhatsApp API status: {response.status_code}")
-        
-        if response.ok:
-            return True
-        return False
+        requests.post(url, headers=headers, json=data, timeout=30)
+        return True
 
     except Exception as e:
         print(f"Error sending WhatsApp message: {e}")
         return False
 
-
 # =========================================================
-# Health Check
+# Health Check & Run
 # =========================================================
 @app.route("/", methods=["GET"])
 def home():
     return "Dairy Nutrition AI Bot is running.", 200
 
-# =========================================================
-# تشغيل السيرفر
-# =========================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print(f"Starting server on port {port}")
     app.run(host="0.0.0.0", port=port)
