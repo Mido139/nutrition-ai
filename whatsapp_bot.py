@@ -24,8 +24,8 @@ TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 # إصدار WhatsApp Graph API
 WHATSAPP_API_VERSION = "v26.0"
 
-# موديل Gemini - تم التعديل للإصدار الصحيح المدعوم
-GEMINI_MODEL = "gemini-2.5-flash"
+# موديل Gemini - تم التعديل للإصدار المستقر والمدعوم
+GEMINI_MODEL = "gemini-1.5-flash"
 
 
 # =========================================================
