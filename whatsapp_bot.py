@@ -354,13 +354,20 @@ def search_scientific_sources(
             + "(peer reviewed "
               "OR scientific paper "
               "OR journal article "
+              "OR research article "
+              "OR systematic review "
+              "OR meta-analysis "
+              "OR textbook "
+              "OR scientific book "
               "OR NASEM "
               "OR NRC "
               "OR FAO "
-              "OR university research "
+              "OR university publication "
+              "OR بحث محكم "
               "OR بحث علمي "
-              "OR دراسة أكاديمية "
-              "OR مجلة علمية)"
+              "OR دراسة منشورة "
+              "OR كتاب علمي "
+              "OR مرجع أكاديمي)"
         )
 
 
@@ -391,6 +398,35 @@ def search_scientific_sources(
             "results",
             []
         )
+
+        # تصفية النتائج: نحتفظ بالمصادر ذات الطابع العلمي/الأكاديمي فقط.
+        academic_keywords = [
+            "journal", "research", "study", "paper",
+            "review", "meta-analysis", "systematic review",
+            "naseM", "nrc", "fao", "university",
+            "academic", "scientific", "proceedings",
+            "pubmed", "doi", "springer", "elsevier",
+            "wiley", "sciencedirect", "mdpi",
+            "كتاب", "بحث", "دراسة", "مجلة علمية",
+            "جامعة", "أكاديمي", "علمي"
+        ]
+
+        academic_results = []
+
+        for result in results:
+            title = str(result.get("title", "")).lower()
+            content = str(result.get("content", "")).lower()
+            url = str(result.get("url", "")).lower()
+
+            combined = title + " " + content + " " + url
+
+            if any(
+                keyword.lower() in combined
+                for keyword in academic_keywords
+            ):
+                academic_results.append(result)
+
+        results = academic_results
 
 
         print(
@@ -854,6 +890,20 @@ def process_with_ai(
 اعتمد على مبادئ NASEM وتوصيات تغذية الأبقار
 الحلوب، واستفد من نتائج البحث العلمي الموجودة
 في السياق أدناه.
+
+قواعد المصادر والمراجع:
+
+- لا تعرض أي مصدر تجاري أو مدونة أو موقع عام كمصدر علمي.
+- لا تعرض إلا المراجع العلمية/الأكاديمية، مثل:
+  * الكتب العلمية والأكاديمية.
+  * الأبحاث والدراسات المنشورة في المجلات العلمية المحكمة.
+  * المراجعات العلمية وSystematic Reviews وMeta-analyses.
+  * المراجع والوثائق العلمية الرسمية مثل NASEM وNRC وFAO عند ارتباطها بالسؤال.
+  * منشورات الجامعات والمراكز البحثية الموثوقة.
+- لا تخترع اسم كتاب أو بحث أو مؤلف أو DOI أو رابط.
+- لا تعتبر نتيجة Tavily مرجعًا علميًا لمجرد أنها ظهرت في البحث؛ يجب أن تكون ذات طبيعة أكاديمية/علمية واضحة.
+- إذا لم تتوفر مراجع علمية مناسبة، لا تضع قسم مراجع، ولا تستبدله بمصادر عامة.
+- عند عرض المراجع، استخدم فقط المصادر التي تم العثور عليها فعليًا من البحث.
 
 قواعد الإجابة:
 
