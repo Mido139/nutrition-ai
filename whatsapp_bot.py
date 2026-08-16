@@ -345,12 +345,22 @@ def search_scientific_sources(
             + " AND "
 
             + "(dairy cattle OR dairy cows "
+              "OR dairy cow nutrition "
+              "OR lactating cows "
               "OR الأبقار الحلوب)"
 
-            + " (scientific research "
-              "OR academic study "
+            + " AND "
+
+            + "(peer reviewed "
+              "OR scientific paper "
+              "OR journal article "
+              "OR NASEM "
+              "OR NRC "
+              "OR FAO "
+              "OR university research "
               "OR بحث علمي "
-              "OR دراسة أكاديمية)"
+              "OR دراسة أكاديمية "
+              "OR مجلة علمية)"
         )
 
 
@@ -820,7 +830,6 @@ def process_with_ai(
                 progress_callback(
                     "📚 تم العثور على "
                     f"{len(references)} مراجع علمية مناسبة.\n"
-                    "🧠 جاري تحليل المراجع وصياغة الإجابة..."
                 )
 
             else:
@@ -1027,7 +1036,7 @@ def append_references(
 
     references_text = (
         "\n\n"
-        "📚 المصادر والمراجع:\n"
+        "📚 المصادر والمراجع العلمية:\n"
     )
 
     for index, reference in enumerate(
