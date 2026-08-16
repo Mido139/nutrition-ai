@@ -333,7 +333,7 @@ def search_scientific_sources(
             "⚠️ Tavily client unavailable"
         )
 
-        return ""
+        return "", []
 
 
     try:
@@ -391,6 +391,8 @@ def search_scientific_sources(
 
         context = ""
 
+        references = []
+
 
         for index, result in enumerate(
             results
@@ -425,7 +427,17 @@ def search_scientific_sources(
             )
 
 
-        return context
+            # حفظ بيانات المصدر الحقيقية
+            # لا يتم توليدها بواسطة Gemini.
+            if url:
+
+                references.append({
+                    "title": title,
+                    "url": url
+                })
+
+
+        return context, references
 
 
     except Exception as e:
@@ -434,7 +446,8 @@ def search_scientific_sources(
             f"❌ Tavily error: {e}"
         )
 
-        return ""
+        return "", []
+
 
 
 # =========================================================
@@ -629,7 +642,8 @@ def ask_gemini(
 # =========================================================
 
 def process_with_ai(
-    query
+    query,
+    progress_callback=None
 ):
 
     # =================================================
@@ -772,7 +786,7 @@ def process_with_ai(
         )
         print("========================================")
 
-        return identity_answer
+        return identity_answer, []
 
     try:
 
@@ -790,9 +804,31 @@ def process_with_ai(
         # Tavily
         # =================================================
 
-        context = search_scientific_sources(
+        context, references = search_scientific_sources(
             query
         )
+
+        # -------------------------------------------------
+        # تحديث المستخدم بعد انتهاء البحث
+        # وقبل بدء تحليل Gemini
+        # -------------------------------------------------
+
+        if progress_callback:
+
+            if references:
+
+                progress_callback(
+                    "📚 تم العثور على "
+                    f"{len(references)} مراجع علمية مناسبة.\n"
+                    "🧠 جاري تحليل المراجع وصياغة الإجابة..."
+                )
+
+            else:
+
+                progress_callback(
+                    "⚠️ لم يتم العثور على مراجع مناسبة حاليًا.\n"
+                    "🧠 جاري تحليل السؤال وصياغة الإجابة..."
+                )
 
 
         # =================================================
@@ -823,7 +859,11 @@ def process_with_ai(
 8. اجعل الإجابة مناسبة للإرسال عبر WhatsApp.
 9. لا تستخدم Markdown معقد جدًا.
 10. لا تذكر أنك نموذج ذكاء اصطناعي.
-11. إذا كان السؤال متعلقًا بتغذية الأبقار،
+11. لا تخترع أي مصدر أو مرجع.
+12. إذا استخدمت معلومة من سياق البحث، حاول الإشارة إليها داخل النص بصيغة [1] أو [2] أو [3] حسب رقم المصدر.
+13. لا تكتب قسم "المراجع" بنفسك؛ البرنامج سيضيف المراجع الحقيقية وروابطها تلقائيًا بعد إجابتك.
+14. إذا لم يكن هناك مصدر مناسب في سياق البحث، صرّح بعدم توفر مصدر مناسب بدل اختراع مرجع.
+15. إذا كان السؤال متعلقًا بتغذية الأبقار،
     اذكر العوامل المؤثرة المهمة مثل:
     - وزن الحيوان
     - إنتاج اللبن
@@ -862,7 +902,7 @@ def process_with_ai(
         )
 
 
-        return reply
+        return reply, references
 
 
     except Exception as e:
@@ -874,8 +914,151 @@ def process_with_ai(
 
         return (
             "⚠️ حدث خطأ أثناء معالجة "
-            "السؤال. حاول مرة أخرى."
+            "السؤال. حاول مرة أخرى.",
+            []
         )
+
+
+# =========================================================
+# Identity Question Detection
+# =========================================================
+
+def is_identity_question_for_progress(
+    query
+):
+
+    triggers = [
+        "انت مين",
+        "إنت مين",
+        "من انت",
+        "من أنت",
+        "مين انت",
+        "مين أنت",
+        "مين حضرتك",
+        "حضرتك مين",
+        "عرف نفسك",
+        "عرفني بنفسك",
+        "من قام ببرمجتك",
+        "مين برمجك",
+        "مين عملك",
+        "مين طورك",
+        "مين المطور",
+        "مين المبرمج",
+        "مين اللي برمجك",
+        "مين اللي طورك",
+        "who are you",
+        "what are you",
+        "who created you",
+        "who programmed you"
+    ]
+
+    value = str(query).strip().lower()
+
+    for old, new in {
+        "إ": "ا",
+        "أ": "ا",
+        "آ": "ا",
+        "ى": "ي",
+        "ة": "ه",
+        "ـ": ""
+    }.items():
+
+        value = value.replace(
+            old,
+            new
+        )
+
+    for punctuation in [
+        "؟", "?", "!", "،", ",", ".", ":",
+        ";", "؛", "-", "_", '"', "'"
+    ]:
+
+        value = value.replace(
+            punctuation,
+            " "
+        )
+
+    value = " ".join(
+        value.split()
+    )
+
+    for trigger in triggers:
+
+        trigger = trigger.lower()
+
+        for old, new in {
+            "إ": "ا",
+            "أ": "ا",
+            "آ": "ا",
+            "ى": "ي",
+            "ة": "ه",
+            "ـ": ""
+        }.items():
+
+            trigger = trigger.replace(
+                old,
+                new
+            )
+
+        trigger = " ".join(
+            trigger.split()
+        )
+
+        if (
+            value == trigger
+            or value.startswith(
+                trigger + " "
+            )
+        ):
+
+            return True
+
+    return False
+
+
+def append_references(
+    reply,
+    references
+):
+
+    if not references:
+
+        return reply
+
+    references_text = (
+        "\n\n"
+        "📚 المصادر والمراجع:\n"
+    )
+
+    for index, reference in enumerate(
+        references,
+        start=1
+    ):
+
+        title = reference.get(
+            "title",
+            "مصدر علمي"
+        )
+
+        url = reference.get(
+            "url",
+            ""
+        )
+
+        references_text += (
+            f"{index}. {title}\n"
+        )
+
+        if url:
+
+            references_text += (
+                f"🔗 {url}\n"
+            )
+
+    return (
+        reply.rstrip()
+        + references_text
+    )
 
 
 # =========================================================
@@ -895,14 +1078,55 @@ def process_message_background(
         )
 
 
-        # معالجة السؤال
-        reply = process_with_ai(
+        # =================================================
+        # رسالة مؤقتة للمستخدم أثناء البحث والتحليل
+        # لا نرسلها لأسئلة الهوية لأن هذه الأسئلة
+        # لا تحتاج بحثًا علميًا.
+        # =================================================
+
+        if not is_identity_question_for_progress(
             msg_text
+        ):
+
+            send_whatsapp_message(
+
+                sender_phone,
+
+                "🔎 جاري البحث عن المراجع العلمية المناسبة لسؤالك...\n"
+                "⏳ لحظات من فضلك."
+            )
+
+
+        # =================================================
+        # معالجة السؤال
+        # =================================================
+
+        def send_progress(message):
+
+            send_whatsapp_message(
+                sender_phone,
+                message
+            )
+
+
+        reply, references = process_with_ai(
+            msg_text,
+            progress_callback=send_progress
         )
 
 
         # =================================================
-        # Send ONE final response
+        # إضافة المصادر الحقيقية بعد الإجابة
+        # =================================================
+
+        final_reply = append_references(
+            reply,
+            references
+        )
+
+
+        # =================================================
+        # إرسال الإجابة النهائية مرة واحدة
         # =================================================
 
         print("")
@@ -916,7 +1140,7 @@ def process_message_background(
 
             sender_phone,
 
-            reply
+            final_reply
         )
 
 
@@ -930,6 +1154,12 @@ def process_message_background(
         print(
             f"❌ Background processing error: "
             f"{e}"
+        )
+
+        send_whatsapp_message(
+            sender_phone,
+            "⚠️ حدث خطأ أثناء معالجة السؤال. "
+            "من فضلك حاول مرة أخرى."
         )
 
 
