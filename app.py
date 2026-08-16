@@ -1275,6 +1275,64 @@ def process_query(
     img=None
 ):
 
+    # ==========================================
+    # هوية المساعد
+    # ==========================================
+
+    identity_questions = [
+        "انت مين",
+        "إنت مين",
+        "من انت",
+        "من أنت",
+        "مين انت",
+        "مين أنت",
+        "عرف نفسك",
+        "من انت؟",
+        "من أنت؟",
+        "انت مين؟",
+        "إنت مين؟",
+        "who are you",
+        "what are you"
+    ]
+
+    normalized_query = query.strip().lower()
+
+    if normalized_query in [q.lower() for q in identity_questions]:
+
+        identity_answer = (
+            "أنا استشاري تغذية متخصص في تغذية وإدارة الأبقار الحلوب، "
+            "وتمت برمجتي بواسطة المهندس محمد ناصر، "
+            "المتخصص في تغذية الأبقار الحلوب."
+        )
+
+        # حفظ سؤال المستخدم
+        user_chats[
+            st.session_state.current_chat
+        ]["messages"].append({
+            "role": "user",
+            "content": query,
+            "image": img
+        })
+
+        # حفظ الإجابة
+        user_chats[
+            st.session_state.current_chat
+        ]["messages"].append({
+            "role": "assistant",
+            "content": identity_answer
+        })
+
+        save_user_chats(
+            user_email,
+            user_chats
+        )
+
+        # عرض الإجابة مباشرة
+        with st.chat_message("assistant"):
+            st.markdown(identity_answer)
+
+        return
+
     now_str = datetime.datetime.now().isoformat()
 
 
